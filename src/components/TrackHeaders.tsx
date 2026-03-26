@@ -6,10 +6,11 @@ import { RULER_HEIGHT, TRACK_HEIGHT } from '../constants';
 interface Props {
   tracks: Track[];
   instruments: Record<string, Instrument>;
+  selectedTrackId: string | null;
   dispatch: Dispatch<Action>;
 }
 
-export default memo(function TrackHeaders({ tracks, instruments, dispatch }: Props) {
+export default memo(function TrackHeaders({ tracks, instruments, selectedTrackId, dispatch }: Props) {
   return (
     <div className="shrink-0 border-r border-zinc-800 bg-zinc-900 flex flex-col z-10" style={{ width: 192 }}>
       {/* Ruler spacer + add track */}
@@ -30,7 +31,10 @@ export default memo(function TrackHeaders({ tracks, instruments, dispatch }: Pro
       {tracks.map(track => (
         <div
           key={track.id}
-          className="shrink-0 flex items-center gap-1.5 border-b border-zinc-800 px-2"
+          onClick={() => dispatch({ type: 'SELECT_TRACK', trackId: selectedTrackId === track.id ? null : track.id })}
+          className={`shrink-0 flex items-center gap-1.5 border-b border-zinc-800 px-2 cursor-pointer transition-colors ${
+            selectedTrackId === track.id ? 'bg-zinc-800' : 'hover:bg-zinc-850'
+          }`}
           style={{ height: TRACK_HEIGHT, borderLeftWidth: 3, borderLeftColor: track.color }}
         >
           <span

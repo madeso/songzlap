@@ -12,10 +12,13 @@ interface Props {
   openClipId: string | null;
   currentBeat: number;
   playing: boolean;
+  loopEnabled: boolean;
+  loopStart: number;
+  loopEnd: number;
   dispatch: Dispatch<Action>;
 }
 
-export default function ArrangementGrid({ tracks, clips, openClipId, currentBeat, playing, dispatch }: Props) {
+export default function ArrangementGrid({ tracks, clips, openClipId, currentBeat, playing, loopEnabled, loopStart, loopEnd, dispatch }: Props) {
   const totalWidth = ARRANGEMENT_BARS * BAR_WIDTH;
   const totalHeight = RULER_HEIGHT + tracks.length * TRACK_HEIGHT;
 
@@ -77,6 +80,8 @@ export default function ArrangementGrid({ tracks, clips, openClipId, currentBeat
 
   const playheadX = (currentBeat / BEATS_PER_BAR) * BAR_WIDTH;
   const pitchRange = PR_NOTE_MAX - PR_NOTE_MIN;
+  const loopStartX = (loopStart / BEATS_PER_BAR) * BAR_WIDTH;
+  const loopEndX = (loopEnd / BEATS_PER_BAR) * BAR_WIDTH;
 
   return (
     <div className="flex-1 overflow-auto">
@@ -155,6 +160,18 @@ export default function ArrangementGrid({ tracks, clips, openClipId, currentBeat
         {/* Playhead */}
         <line x1={playheadX} y1={0} x2={playheadX} y2={totalHeight}
           stroke="#ef4444" strokeWidth={1.5} style={{ pointerEvents: 'none' }} opacity={playing ? 1 : 0.3} />
+
+        {/* Loop region */}
+        {loopEnabled && (
+          <>
+            <rect x={loopStartX} y={0} width={loopEndX - loopStartX} height={totalHeight}
+              fill="#a78bfa" fillOpacity={0.06} style={{ pointerEvents: 'none' }} />
+            <line x1={loopStartX} y1={0} x2={loopStartX} y2={totalHeight}
+              stroke="#10b981" strokeWidth={1.5} strokeDasharray="4,3" style={{ pointerEvents: 'none' }} />
+            <line x1={loopEndX} y1={0} x2={loopEndX} y2={totalHeight}
+              stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4,3" style={{ pointerEvents: 'none' }} />
+          </>
+        )}
       </svg>
     </div>
   );

@@ -71,22 +71,26 @@ export default function InstrumentEditor({ instrument: instr, dispatch, onClose 
           spellCheck={false}
         />
 
-        {/* Osc type buttons */}
-        <div className="flex gap-0.5">
-          {OSC_TYPES.map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => update(instr, { osc: value }, dispatch)}
-              className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
-                instr.osc === value
-                  ? 'bg-violet-600 text-white'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* Osc type buttons (osc instruments only) */}
+        {instr.type === 'osc' ? (
+          <div className="flex gap-0.5">
+            {OSC_TYPES.map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => update(instr, { osc: value }, dispatch)}
+                className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
+                  instr.osc === value
+                    ? 'bg-violet-600 text-white'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-zinc-500 border border-zinc-700 rounded px-1.5 py-0.5">Sample</span>
+        )}
 
         <span className="ml-auto text-xs text-zinc-600">Instrument</span>
 

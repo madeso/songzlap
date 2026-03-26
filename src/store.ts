@@ -1,8 +1,8 @@
 import type { AppState, Action, Note } from './types';
 import { uid } from './utils';
-import { TRACK_COLORS, INSTRUMENTS, CLIP_DEFAULT_BEATS } from './constants';
+import { TRACK_COLORS, INSTRUMENTS, CLIP_DEFAULT_BEATS, ARRANGEMENT_BARS, BEATS_PER_BAR } from './constants';
 
-export function makeInitialState(): AppState {
+function buildDefaultState(): AppState {
   const clip1Id = uid();
   const clip2Id = uid();
 
@@ -30,6 +30,11 @@ export function makeInitialState(): AppState {
     openClipId: null,
     openInstrumentId: null,
     instruments: { ...INSTRUMENTS },
+    playbackMode: 'song',
+    selectedTrackId: null,
+    loopEnabled: false,
+    loopStart: 0,
+    loopEnd: ARRANGEMENT_BARS * BEATS_PER_BAR,
     clips: {
       [clip1Id]: { id: clip1Id, notes: melodyNotes.map(n => ({ ...n, id: uid() })), lengthBeats: 8 },
       [clip2Id]: { id: clip2Id, notes: bassNotes.map(n => ({ ...n, id: uid() })), lengthBeats: 8 },
@@ -41,6 +46,19 @@ export function makeInitialState(): AppState {
   };
 }
 
+export function makeInitialState(): AppState {
+  try {
+    const saved = localStorage.getItem('tunes-song');
+    if (saved) {
+      const parsed = JSON.parse(saved) as AppState;
+      if (parsed.tracks && parsed.clips && parsed.instruments) {
+        return { ...buildDefaultState(), ...parsed, playing: false };
+      }
+    }
+  } catch { /* ignore */ }
+  return buildDefaultState();
+}
+
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'ADD_TRACK': {
@@ -50,7 +68,7 @@ export function reducer(state: AppState, action: Action): AppState {
         tracks: [...state.tracks, {
           id: uid(),
           name: `Track ${state.tracks.length + 1}`,
-          instrumentId: Object.keys(INSTRUMENTS)[0],
+          instrumentId: Object.keys(state.instruments).find(k => state.instruments[k].type === 'osc') ?? Object.keys(state.instruments)[0],
           placements: [],
           muted: false,
           color,
@@ -64,6 +82,7 @@ export function reducer(state: AppState, action: Action): AppState {
         ...state,
         tracks: state.tracks.filter(t => t.id !== action.id),
         openClipId: opensRemoved ? null : state.openClipId,
+        selectedTrackId: state.selectedTrackId === action.id ? null : state.selectedTrackId,
       };
     }
     case 'SET_INSTRUMENT':
@@ -130,6 +149,19 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, instruments: { ...state.instruments, [action.instrument.id]: action.instrument } };
     case 'OPEN_INSTRUMENT':
       return { ...state, openInstrumentId: action.id };
+    case 'LOAD_SONG':
+      return { ...action.state, playing: false };
+    case 'SET_PLAYBACK_MODE':
+      return { ...state, playbackMode: action.mode };
+    case 'SELECT_TRACK':
+      return { ...state, selectedTrackId: action.trackId };
+    case 'SET_LOOP':
+      return {
+        ...state,
+        loopEnabled: action.enabled ?? state.loopEnabled,
+        loopStart: action.start ?? state.loopStart,
+        loopEnd: action.end ?? state.loopEnd,
+      };
     default:
       return state;
   }

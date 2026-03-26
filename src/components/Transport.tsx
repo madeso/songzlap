@@ -1,25 +1,40 @@
 import type { Dispatch } from 'react';
 import type { Action } from '../types';
 import { formatBeatTime } from '../utils';
+import { ARRANGEMENT_BARS, BEATS_PER_BAR } from '../constants';
 
 interface Props {
   bpm: number;
   playing: boolean;
   currentBeat: number;
+  playbackMode: 'song' | 'track';
+  loopEnabled: boolean;
+  loopStart: number;
+  loopEnd: number;
   dispatch: Dispatch<Action>;
   onPlayToggle: () => void;
+  onExportSong: () => void;
+  onImportSong: () => void;
+  onImportMod: () => void;
+  onExportWav: () => void;
 }
 
-export default function Transport({ bpm, playing, currentBeat, dispatch, onPlayToggle }: Props) {
+export default function Transport({
+  bpm, playing, currentBeat, playbackMode, loopEnabled, loopStart, loopEnd,
+  dispatch, onPlayToggle, onExportSong, onImportSong, onImportMod, onExportWav,
+}: Props) {
+  const maxBeats = ARRANGEMENT_BARS * BEATS_PER_BAR;
+
   return (
-    <header className="flex items-center gap-4 px-4 h-12 bg-zinc-900 border-b border-zinc-800 shrink-0 select-none">
-      <span className="font-['Space_Grotesk'] font-semibold text-base text-violet-400 mr-2 tracking-tight">
+    <header className="flex items-center gap-3 px-3 h-12 bg-zinc-900 border-b border-zinc-800 shrink-0 select-none flex-wrap">
+      <span className="font-['Space_Grotesk'] font-semibold text-base text-violet-400 tracking-tight">
         tunes
       </span>
 
+      {/* Play / Stop */}
       <button
         onClick={onPlayToggle}
-        className="flex items-center justify-center w-8 h-8 rounded-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 transition-colors"
+        className="flex items-center justify-center w-8 h-8 rounded-full bg-violet-600 hover:bg-violet-500 active:bg-violet-700 transition-colors shrink-0"
         title={playing ? 'Stop (Space)' : 'Play (Space)'}
       >
         <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
@@ -27,23 +42,102 @@ export default function Transport({ bpm, playing, currentBeat, dispatch, onPlayT
         </span>
       </button>
 
-      <span className="font-mono text-sm text-zinc-400 w-12 tabular-nums">{formatBeatTime(currentBeat)}</span>
+      {/* Playhead */}
+      <span className="font-mono text-sm text-zinc-400 w-12 tabular-nums shrink-0">{formatBeatTime(currentBeat)}</span>
 
-      <div className="flex items-center gap-2">
+      {/* BPM */}
+      <div className="flex items-center gap-1.5 shrink-0">
         <label className="text-xs text-zinc-500 uppercase tracking-wider">BPM</label>
         <input
-          type="number"
-          value={bpm}
-          min={40}
-          max={240}
+          type="number" value={bpm} min={40} max={240}
           onChange={e => dispatch({ type: 'SET_BPM', bpm: Math.max(40, Math.min(240, Number(e.target.value))) })}
-          className="w-16 bg-zinc-800 text-zinc-100 text-sm rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:border-violet-500"
+          className="w-14 bg-zinc-800 text-zinc-100 text-sm rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:border-violet-500"
         />
       </div>
 
-      <span className="ml-auto text-xs text-zinc-600">
-        Click grid to add clip · Click clip to edit · Right-click to delete
-      </span>
+      {/* Song / Track toggle */}
+      <div className="flex items-center bg-zinc-800 rounded overflow-hidden border border-zinc-700 shrink-0">
+        {(['song', 'track'] as const).map(mode => (
+          <button
+            key={mode}
+            onClick={() => dispatch({ type: 'SET_PLAYBACK_MODE', mode })}
+            className={`text-xs px-2 py-1 capitalize transition-colors ${
+              playbackMode === mode ? 'bg-violet-600 text-white' : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+            title={mode === 'song' ? 'Play all tracks' : 'Play selected track only'}
+          >
+            {mode}
+          </button>
+        ))}
+      </div>
+
+      {/* Loop toggle */}
+      <button
+        onClick={() => dispatch({ type: 'SET_LOOP', enabled: !loopEnabled })}
+        className={`flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors shrink-0 ${
+          loopEnabled
+            ? 'bg-violet-600 border-violet-500 text-white'
+            : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+        }`}
+        title="Toggle loop"
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: 14 }}>repeat</span>
+        Loop
+      </button>
+
+      {/* Loop range (shown when loop is on) */}
+      {loopEnabled && (
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-xs text-zinc-500">from</span>
+          <input
+            type="number" value={Math.round(loopStart)} min={0} max={loopEnd - 1} step={BEATS_PER_BAR}
+            onChange={e => dispatch({ type: 'SET_LOOP', start: Math.max(0, Math.min(loopEnd - BEATS_PER_BAR, Number(e.target.value))) })}
+            className="w-14 bg-zinc-800 text-zinc-100 text-xs rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:border-violet-500"
+          />
+          <span className="text-xs text-zinc-500">to</span>
+          <input
+            type="number" value={Math.round(loopEnd)} min={loopStart + 1} max={maxBeats} step={BEATS_PER_BAR}
+            onChange={e => dispatch({ type: 'SET_LOOP', end: Math.max(loopStart + BEATS_PER_BAR, Math.min(maxBeats, Number(e.target.value))) })}
+            className="w-14 bg-zinc-800 text-zinc-100 text-xs rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:border-violet-500"
+          />
+        </div>
+      )}
+
+      <div className="ml-auto flex items-center gap-1.5 shrink-0">
+        {/* Import MOD */}
+        <button
+          onClick={onImportMod}
+          className="text-xs px-2 py-1 rounded border border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors"
+          title="Import .mod file"
+        >
+          .mod
+        </button>
+        {/* Import .song */}
+        <button
+          onClick={onImportSong}
+          className="text-xs px-2 py-1 rounded border border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors"
+          title="Import .song file"
+        >
+          Import
+        </button>
+        {/* Export .song */}
+        <button
+          onClick={onExportSong}
+          className="text-xs px-2 py-1 rounded border border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors"
+          title="Export as .song"
+        >
+          Export
+        </button>
+        {/* Export WAV */}
+        <button
+          onClick={onExportWav}
+          className="text-xs px-2 py-1 rounded border border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors"
+          title="Export as WAV"
+        >
+          WAV
+        </button>
+      </div>
     </header>
   );
 }
+
