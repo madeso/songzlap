@@ -200,7 +200,7 @@ function App() {
       </div>
 
       {song.openClipId && song.clips[song.openClipId] && (
-        <PianoRoll />
+        <PianoRoll currentBeat={currentBeat} />
       )}
     </>
   )

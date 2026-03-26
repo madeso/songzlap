@@ -26,10 +26,11 @@ type DragState =
   | { kind: 'resizing'; noteId: string; noteBeat: number; origDurCells: number; curDurCells: number; startX: number }
   | { kind: 'removing'; noteId: string; startX: number };
 
-export default function PianoRoll() {
+export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const dispatch = useAppDispatch()
   const clipId = useAppSelector(s => s.song.openClipId)!
   const clip = useAppSelector(s => s.song.clips[clipId])
+  const tracks = useAppSelector(s => s.song.tracks)
   const totalCells = (clip?.lengthBeats ?? 0) * SUBDIV;
   const gridWidth = totalCells * PR_CELL_WIDTH;
   const totalWidth = PR_KEY_WIDTH + gridWidth;
@@ -227,6 +228,12 @@ export default function PianoRoll() {
 
   if (!clip) return null;
 
+  // Playhead within this clip
+  const placement = tracks.flatMap(t => t.placements).find(p => p.clipId === clipId);
+  const clipRelativeBeat = placement ? currentBeat - placement.startBeat : -1;
+  const showPlayhead = clipRelativeBeat >= 0 && clipRelativeBeat <= clip.lengthBeats;
+  const playheadX = PR_KEY_WIDTH + clipRelativeBeat * SUBDIV * PR_CELL_WIDTH;
+
   return (
     <div className="border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0" style={{ height: 280 }}>
       {/* Header */}
@@ -293,6 +300,15 @@ export default function PianoRoll() {
 
           {/* Ghost preview while drawing */}
           {renderGhost()}
+
+          {/* Playhead */}
+          {showPlayhead && (
+            <line
+              x1={playheadX} y1={0} x2={playheadX} y2={totalHeight}
+              stroke="#ef4444" strokeWidth={1.5} opacity={0.85}
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
 
           {/* Interaction overlay — rendered last so it sits on top */}
           <rect
