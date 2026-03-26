@@ -260,11 +260,6 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
           <button
             title="Transpose up one octave"
             onClick={() => dispatch(transposeClip({ clipId, semitones: 12 }))}
-            className="flex items-center justify-center w-6 h-5 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors text-xs font-bold tabular-nums"
-          >oct−</button>
-          <button
-            title="Transpose up one octave"
-            onClick={() => dispatch(transposeClip({ clipId, semitones: 12 }))}
             className="flex items-center justify-center px-1.5 h-5 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors text-xs font-bold tabular-nums"
           >oct+</button>
         </div>
