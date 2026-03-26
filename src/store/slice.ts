@@ -14,22 +14,36 @@ function regenerateChordClips(state: AppState, chordTrackId: string) {
   const sourceTrack = state.tracks.find(t => t.id === chordConfig.sourceTrackId);
   if (!sourceTrack) return;
 
-  // Rebuild chord placements to mirror source placements
-  const oldClipIds = chordTrack.placements.map(p => p.clipId);
-
-  chordTrack.placements = sourceTrack.placements.map(pl => {
+  // Update existing placements in-place to preserve clip IDs (keeps openClipId valid)
+  const existingPlacements = chordTrack.placements;
+  const newPlacements = sourceTrack.placements.map((pl, i) => {
     const sourceClip = state.clips[pl.clipId];
     const chordNotes = sourceClip
       ? generateChordNotes(sourceClip.notes, sourceClip.lengthBeats, chordConfig)
       : [];
     const lengthBeats = sourceClip?.lengthBeats ?? 16;
-    const clipId = uid();
-    state.clips[clipId] = { id: clipId, notes: chordNotes, lengthBeats };
-    return { id: uid(), clipId, startBeat: pl.startBeat };
+
+    const existing = existingPlacements[i];
+    if (existing) {
+      // Reuse the same clip ID — update in place so openClipId remains valid
+      state.clips[existing.clipId] = { id: existing.clipId, notes: chordNotes, lengthBeats };
+      return { ...existing, startBeat: pl.startBeat };
+    } else {
+      // New placement needed (source gained more placements than chord track had)
+      const clipId = uid();
+      state.clips[clipId] = { id: clipId, notes: chordNotes, lengthBeats };
+      return { id: uid(), clipId, startBeat: pl.startBeat };
+    }
   });
 
-  // Clean up old chord clips
-  for (const id of oldClipIds) delete state.clips[id];
+  // Remove orphaned placements if source lost placements
+  for (let i = newPlacements.length; i < existingPlacements.length; i++) {
+    const orphanId = existingPlacements[i].clipId;
+    if (orphanId === state.openClipId) state.openClipId = null;
+    delete state.clips[orphanId];
+  }
+
+  chordTrack.placements = newPlacements;
 }
 
 const songSlice = createSlice({
