@@ -23,9 +23,16 @@ export const TRACK_COLORS = [
 ];
 
 export const INSTRUMENTS: Record<string, Instrument> = {
-  lead:  { id: 'lead',  name: 'Synth Lead', osc: 'sawtooth',  attack: 0.01,  decay: 0.1,  sustain: 0.7, release: 0.2  },
-  pad:   { id: 'pad',   name: 'Pad',        osc: 'sine',      attack: 0.3,   decay: 0.2,  sustain: 0.8, release: 0.5  },
-  bass:  { id: 'bass',  name: 'Bass',       osc: 'square',    attack: 0.01,  decay: 0.05, sustain: 0.9, release: 0.05 },
-  pluck: { id: 'pluck', name: 'Pluck',      osc: 'triangle',  attack: 0.005, decay: 0.3,  sustain: 0.0, release: 0.1  },
-  keys:  { id: 'keys',  name: 'Keys',       osc: 'sine',      attack: 0.02,  decay: 0.3,  sustain: 0.5, release: 0.3  },
+  lead:    { id: 'lead',    name: 'Synth Lead',  osc: 'sawtooth',  attack: 0.01,  decay: 0.1,  sustain: 0.7, release: 0.2  },
+  pad:     { id: 'pad',     name: 'Pad',         osc: 'sine',      attack: 0.3,   decay: 0.2,  sustain: 0.8, release: 0.5  },
+  bass:    { id: 'bass',    name: 'Bass',        osc: 'square',    attack: 0.01,  decay: 0.05, sustain: 0.9, release: 0.05 },
+  pluck:   { id: 'pluck',   name: 'Pluck',       osc: 'triangle',  attack: 0.005, decay: 0.3,  sustain: 0.0, release: 0.1  },
+  keys:    { id: 'keys',    name: 'Keys',        osc: 'sine',      attack: 0.02,  decay: 0.3,  sustain: 0.5, release: 0.3  },
+  organ:   { id: 'organ',   name: 'Organ',       osc: 'sine',      attack: 0.01,  decay: 0.01, sustain: 1.0, release: 0.05 },
+  strings: { id: 'strings', name: 'Strings',     osc: 'sawtooth',  attack: 0.4,   decay: 0.3,  sustain: 0.7, release: 0.6  },
+  brass:   { id: 'brass',   name: 'Brass',       osc: 'sawtooth',  attack: 0.08,  decay: 0.2,  sustain: 0.6, release: 0.15 },
+  bell:    { id: 'bell',    name: 'Bell',        osc: 'sine',      attack: 0.005, decay: 0.8,  sustain: 0.0, release: 0.5  },
+  sub:     { id: 'sub',     name: 'Sub Bass',    osc: 'sine',      attack: 0.02,  decay: 0.1,  sustain: 0.8, release: 0.1  },
+  lead2:   { id: 'lead2',   name: 'Hard Lead',   osc: 'square',    attack: 0.01,  decay: 0.05, sustain: 0.8, release: 0.1  },
+  stab:    { id: 'stab',    name: 'Stab',        osc: 'sawtooth',  attack: 0.001, decay: 0.08, sustain: 0.0, release: 0.05 },
 };

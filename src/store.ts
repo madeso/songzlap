@@ -28,6 +28,8 @@ export function makeInitialState(): AppState {
     bpm: 120,
     playing: false,
     openClipId: null,
+    openInstrumentId: null,
+    instruments: { ...INSTRUMENTS },
     clips: {
       [clip1Id]: { id: clip1Id, notes: melodyNotes.map(n => ({ ...n, id: uid() })), lengthBeats: 8 },
       [clip2Id]: { id: clip2Id, notes: bassNotes.map(n => ({ ...n, id: uid() })), lengthBeats: 8 },
@@ -124,6 +126,10 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, bpm: action.bpm };
     case 'SET_PLAYING':
       return { ...state, playing: action.playing };
+    case 'UPDATE_INSTRUMENT':
+      return { ...state, instruments: { ...state.instruments, [action.instrument.id]: action.instrument } };
+    case 'OPEN_INSTRUMENT':
+      return { ...state, openInstrumentId: action.id };
     default:
       return state;
   }

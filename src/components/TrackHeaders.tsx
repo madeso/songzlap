@@ -1,14 +1,15 @@
 import { memo } from 'react';
 import type { Dispatch } from 'react';
-import type { Track, Action } from '../types';
-import { INSTRUMENTS, RULER_HEIGHT, TRACK_HEIGHT } from '../constants';
+import type { Track, Instrument, Action } from '../types';
+import { RULER_HEIGHT, TRACK_HEIGHT } from '../constants';
 
 interface Props {
   tracks: Track[];
+  instruments: Record<string, Instrument>;
   dispatch: Dispatch<Action>;
 }
 
-export default memo(function TrackHeaders({ tracks, dispatch }: Props) {
+export default memo(function TrackHeaders({ tracks, instruments, dispatch }: Props) {
   return (
     <div className="shrink-0 border-r border-zinc-800 bg-zinc-900 flex flex-col z-10" style={{ width: 192 }}>
       {/* Ruler spacer + add track */}
@@ -45,10 +46,18 @@ export default memo(function TrackHeaders({ tracks, dispatch }: Props) {
             className="text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0.5 border border-zinc-700 focus:outline-none focus:border-violet-500"
             style={{ maxWidth: 72 }}
           >
-            {Object.values(INSTRUMENTS).map(instr => (
+            {Object.values(instruments).map(instr => (
               <option key={instr.id} value={instr.id}>{instr.name}</option>
             ))}
           </select>
+
+          <button
+            onClick={() => dispatch({ type: 'OPEN_INSTRUMENT', id: track.instrumentId })}
+            className="flex items-center justify-center w-5 h-5 text-zinc-700 hover:text-violet-400 transition-colors"
+            title="Edit instrument"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>tune</span>
+          </button>
 
           <button
             onClick={() => dispatch({ type: 'TOGGLE_MUTE', trackId: track.id })}

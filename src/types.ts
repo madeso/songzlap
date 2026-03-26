@@ -43,7 +43,9 @@ export interface AppState {
   bpm: number;
   tracks: Track[];
   clips: Record<string, Clip>;
+  instruments: Record<string, Instrument>;
   openClipId: string | null;
+  openInstrumentId: string | null;
   playing: boolean;
 }
 
@@ -59,4 +61,6 @@ export type Action =
   | { type: 'REMOVE_NOTE'; clipId: string; noteId: string }
   | { type: 'RESIZE_NOTE'; clipId: string; noteId: string; duration: number }
   | { type: 'SET_BPM'; bpm: number }
-  | { type: 'SET_PLAYING'; playing: boolean };
+  | { type: 'SET_PLAYING'; playing: boolean }
+  | { type: 'UPDATE_INSTRUMENT'; instrument: Instrument }
+  | { type: 'OPEN_INSTRUMENT'; id: string | null };

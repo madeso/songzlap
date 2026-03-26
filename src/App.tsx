@@ -7,6 +7,7 @@ import Transport from './components/Transport'
 import TrackHeaders from './components/TrackHeaders'
 import ArrangementGrid from './components/ArrangementGrid'
 import PianoRoll from './components/PianoRoll'
+import InstrumentEditor from './components/InstrumentEditor'
 
 function App() {
   const [state, dispatch] = useReducer(reducer, undefined, makeInitialState)
@@ -39,7 +40,7 @@ function App() {
       const ctx = audioCtxRef.current
       if (ctx.state === 'suspended') ctx.resume()
 
-      const handle = startPlayback(ctx, state.tracks, state.clips, state.bpm)
+      const handle = startPlayback(ctx, state.tracks, state.clips, state.instruments, state.bpm)
       playbackRef.current = handle
       dispatch({ type: 'SET_PLAYING', playing: true })
 
@@ -49,7 +50,7 @@ function App() {
       }
       rafRef.current = requestAnimationFrame(tick)
     }
-  }, [state.playing, state.tracks, state.clips, state.bpm, stopPlayback])
+  }, [state.playing, state.tracks, state.clips, state.instruments, state.bpm, stopPlayback])
 
   // Space-bar shortcut
   useEffect(() => {
@@ -84,7 +85,7 @@ function App() {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <TrackHeaders tracks={state.tracks} dispatch={dispatch} />
+        <TrackHeaders tracks={state.tracks} instruments={state.instruments} dispatch={dispatch} />
         <ArrangementGrid
           tracks={state.tracks}
           clips={state.clips}
@@ -94,6 +95,14 @@ function App() {
           dispatch={dispatch}
         />
       </div>
+
+      {state.openInstrumentId && state.instruments[state.openInstrumentId] && (
+        <InstrumentEditor
+          instrument={state.instruments[state.openInstrumentId]}
+          dispatch={dispatch}
+          onClose={() => dispatch({ type: 'OPEN_INSTRUMENT', id: null })}
+        />
+      )}
 
       {openClip && (
         <PianoRoll

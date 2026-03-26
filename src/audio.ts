@@ -1,5 +1,4 @@
-import type { Track, Clip } from './types';
-import { INSTRUMENTS } from './constants';
+import type { Track, Clip, Instrument } from './types';
 import { midiToFreq, beatsToSeconds } from './utils';
 
 export interface PlaybackHandle {
@@ -11,6 +10,7 @@ export function startPlayback(
   ctx: AudioContext,
   tracks: Track[],
   clips: Record<string, Clip>,
+  instruments: Record<string, Instrument>,
   bpm: number,
 ): PlaybackHandle {
   const t0 = ctx.currentTime;
@@ -19,7 +19,7 @@ export function startPlayback(
 
   for (const track of tracks) {
     if (track.muted) continue;
-    const instr = INSTRUMENTS[track.instrumentId];
+    const instr = instruments[track.instrumentId];
     if (!instr) continue;
 
     for (const pl of track.placements) {
