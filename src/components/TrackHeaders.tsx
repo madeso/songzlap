@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/index';
-import { addTrack, selectTrack, setInstrument, openInstrument, toggleMute, removeTrack } from '../store/slice';
+import { addTrack, selectTrack, setInstrument, openInstrument, toggleMute, removeTrack, addChordTrack } from '../store/slice';
 import { RULER_HEIGHT, TRACK_HEIGHT } from '../constants';
 
 interface Props {
@@ -91,6 +91,14 @@ export default memo(function TrackHeaders({ instrumentsPanelOpen, onCloseInstrum
             <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
               {track.muted ? 'volume_off' : 'volume_up'}
             </span>
+          </button>
+
+          <button
+            onClick={e => { e.stopPropagation(); dispatch(addChordTrack(track.id)); }}
+            className="flex items-center justify-center w-5 h-5 text-zinc-700 hover:text-violet-400 transition-colors"
+            title="Generate chord track from this melody"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>piano</span>
           </button>
 
           <button

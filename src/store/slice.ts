@@ -2,6 +2,7 @@ import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import type { AppState, Instrument, Note, Clip } from '../types';
 import { uid } from '../utils';
+import { generateChordNotes } from '../chords';
 import { TRACK_COLORS, CLIP_DEFAULT_BEATS } from '../constants';
 import { makeInitialState } from '../store';
 
@@ -97,6 +98,39 @@ const songSlice = createSlice({
     selectTrack(state, action: PayloadAction<string | null>) {
       state.selectedTrackId = action.payload;
     },
+    addChordTrack(state, action: PayloadAction<string>) {
+      const sourceTrack = state.tracks.find(t => t.id === action.payload);
+      if (!sourceTrack) return;
+
+      const color = TRACK_COLORS[state.tracks.length % TRACK_COLORS.length];
+      const instrumentId =
+        Object.keys(state.instruments).find(k => state.instruments[k].type === 'osc') ??
+        Object.keys(state.instruments)[0];
+
+      const newTrack = {
+        id: uid(),
+        name: `${sourceTrack.name} Chords`,
+        instrumentId,
+        placements: [] as typeof sourceTrack.placements,
+        muted: false,
+        color,
+      };
+
+      // Mirror each placement with generated chord notes
+      for (const pl of sourceTrack.placements) {
+        const sourceClip = state.clips[pl.clipId];
+        if (!sourceClip) continue;
+
+        const chordNotes = generateChordNotes(sourceClip.notes, sourceClip.lengthBeats);
+        const clipId = uid();
+        state.clips[clipId] = { id: clipId, notes: chordNotes, lengthBeats: sourceClip.lengthBeats };
+        newTrack.placements.push({ id: uid(), clipId, startBeat: pl.startBeat });
+      }
+
+      // Insert immediately after source track
+      const sourceIndex = state.tracks.findIndex(t => t.id === action.payload);
+      state.tracks.splice(sourceIndex + 1, 0, newTrack);
+    },
     setLoop(state, action: PayloadAction<{ enabled?: boolean; start?: number; end?: number }>) {
       if (action.payload.enabled !== undefined) state.loopEnabled = action.payload.enabled;
       if (action.payload.start !== undefined) state.loopStart = action.payload.start;
@@ -110,7 +144,7 @@ export const {
   addPlacement, removePlacement, openClip,
   addNote, removeNote, resizeNote, transposeClip,
   setBpm, setPlaying, updateInstrument, addInstrument, removeInstrument, openInstrument,
-  loadSong, setPlaybackMode, selectTrack, setLoop,
+  loadSong, setPlaybackMode, selectTrack, setLoop, addChordTrack,
 } = songSlice.actions;
 
 export default songSlice.reducer;
