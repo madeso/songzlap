@@ -1,10 +1,36 @@
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
-import type { AppState, Instrument, Note, Clip } from '../types';
+import type { AppState, Instrument, Note, Clip, ChordConfig } from '../types';
 import { uid } from '../utils';
 import { generateChordNotes } from '../chords';
 import { TRACK_COLORS, CLIP_DEFAULT_BEATS } from '../constants';
 import { makeInitialState } from '../store';
+
+// Pure helper used by setChordConfig and regenerateChordTrack reducers
+function regenerateChordClips(state: AppState, chordTrackId: string) {
+  const chordTrack = state.tracks.find(t => t.id === chordTrackId);
+  if (!chordTrack?.chordConfig) return;
+  const { chordConfig } = chordTrack;
+  const sourceTrack = state.tracks.find(t => t.id === chordConfig.sourceTrackId);
+  if (!sourceTrack) return;
+
+  // Rebuild chord placements to mirror source placements
+  const oldClipIds = chordTrack.placements.map(p => p.clipId);
+
+  chordTrack.placements = sourceTrack.placements.map(pl => {
+    const sourceClip = state.clips[pl.clipId];
+    const chordNotes = sourceClip
+      ? generateChordNotes(sourceClip.notes, sourceClip.lengthBeats, chordConfig)
+      : [];
+    const lengthBeats = sourceClip?.lengthBeats ?? 16;
+    const clipId = uid();
+    state.clips[clipId] = { id: clipId, notes: chordNotes, lengthBeats };
+    return { id: uid(), clipId, startBeat: pl.startBeat };
+  });
+
+  // Clean up old chord clips
+  for (const id of oldClipIds) delete state.clips[id];
+}
 
 const songSlice = createSlice({
   name: 'song',
@@ -107,6 +133,13 @@ const songSlice = createSlice({
         Object.keys(state.instruments).find(k => state.instruments[k].type === 'osc') ??
         Object.keys(state.instruments)[0];
 
+      const config: ChordConfig = {
+        sourceTrackId: action.payload,
+        noteDuration: 1,
+        octave: 0,
+        style: 'block',
+      };
+
       const newTrack = {
         id: uid(),
         name: `${sourceTrack.name} Chords`,
@@ -114,22 +147,30 @@ const songSlice = createSlice({
         placements: [] as typeof sourceTrack.placements,
         muted: false,
         color,
+        chordConfig: config,
       };
 
-      // Mirror each placement with generated chord notes
       for (const pl of sourceTrack.placements) {
         const sourceClip = state.clips[pl.clipId];
         if (!sourceClip) continue;
-
-        const chordNotes = generateChordNotes(sourceClip.notes, sourceClip.lengthBeats);
+        const chordNotes = generateChordNotes(sourceClip.notes, sourceClip.lengthBeats, config);
         const clipId = uid();
         state.clips[clipId] = { id: clipId, notes: chordNotes, lengthBeats: sourceClip.lengthBeats };
         newTrack.placements.push({ id: uid(), clipId, startBeat: pl.startBeat });
       }
 
-      // Insert immediately after source track
       const sourceIndex = state.tracks.findIndex(t => t.id === action.payload);
       state.tracks.splice(sourceIndex + 1, 0, newTrack);
+    },
+    setChordConfig(state, action: PayloadAction<{ trackId: string; config: ChordConfig }>) {
+      const track = state.tracks.find(t => t.id === action.payload.trackId);
+      if (!track) return;
+      track.chordConfig = action.payload.config;
+      // Regenerate immediately when config changes
+      regenerateChordClips(state, track.id);
+    },
+    regenerateChordTrack(state, action: PayloadAction<string>) {
+      regenerateChordClips(state, action.payload);
     },
     setLoop(state, action: PayloadAction<{ enabled?: boolean; start?: number; end?: number }>) {
       if (action.payload.enabled !== undefined) state.loopEnabled = action.payload.enabled;
@@ -144,7 +185,7 @@ export const {
   addPlacement, removePlacement, openClip,
   addNote, removeNote, resizeNote, transposeClip,
   setBpm, setPlaying, updateInstrument, addInstrument, removeInstrument, openInstrument,
-  loadSong, setPlaybackMode, selectTrack, setLoop, addChordTrack,
+  loadSong, setPlaybackMode, selectTrack, setLoop, addChordTrack, setChordConfig, regenerateChordTrack,
 } = songSlice.actions;
 
 export default songSlice.reducer;

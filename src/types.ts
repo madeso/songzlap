@@ -48,6 +48,14 @@ export interface Track {
   placements: Placement[];
   muted: boolean;
   color: string;
+  chordConfig?: ChordConfig;
+}
+
+export interface ChordConfig {
+  sourceTrackId: string;
+  noteDuration: number;  // beats: 0.25 | 0.5 | 1 | 2 | 4
+  octave: number;        // root octave offset from 3 (0 = C3-range, +1 = C4-range, …)
+  style: 'block' | 'bass-only' | 'arpeggio-up' | 'arpeggio-down' | 'strum';
 }
 
 export interface AppState {

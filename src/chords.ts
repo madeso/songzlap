@@ -1,111 +1,70 @@
-import type { Note } from './types';
+import type { Note, ChordConfig } from './types';
 import { uid } from './utils';
 
 // ---------------------------------------------------------------------------
 // Key detection
 // ---------------------------------------------------------------------------
 
-// Intervals in a major scale (relative to root)
 const MAJOR_INTERVALS = [0, 2, 4, 5, 7, 9, 11];
-// Intervals in a natural minor scale
 const MINOR_INTERVALS = [0, 2, 3, 5, 7, 8, 10];
 
-// Diatonic triads in a major key (by scale degree, root-relative semitones)
-// [root, third, fifth] offsets from the key root
 const MAJOR_TRIADS: [number, number, number][] = [
-  [0, 4, 7],  // I   major
-  [2, 5, 9],  // ii  minor
-  [4, 7, 11], // iii minor
-  [5, 9, 0],  // IV  major
-  [7, 11, 2], // V   major
-  [9, 0, 4],  // vi  minor
-  [11, 2, 5], // vii diminished (use as minor for simplicity)
+  [0, 4, 7], [2, 5, 9], [4, 7, 11], [5, 9, 0],
+  [7, 11, 2], [9, 0, 4], [11, 2, 5],
 ];
-
-// Diatonic triads in a minor key
 const MINOR_TRIADS: [number, number, number][] = [
-  [0, 3, 7],  // i   minor
-  [2, 5, 8],  // ii° (minor)
-  [3, 7, 10], // III major
-  [5, 8, 0],  // iv  minor
-  [7, 10, 2], // v   minor  (natural minor)
-  [8, 0, 3],  // VI  major
-  [10, 2, 5], // VII major
+  [0, 3, 7], [2, 5, 8], [3, 7, 10], [5, 8, 0],
+  [7, 10, 2], [8, 0, 3], [10, 2, 5],
 ];
 
 interface KeyInfo {
-  root: number;        // 0–11
+  root: number;
   isMinor: boolean;
   triads: [number, number, number][];
 }
 
 function detectKey(notes: Note[]): KeyInfo {
-  // Weight each pitch class by total duration
   const weights = new Array<number>(12).fill(0);
   for (const n of notes) weights[((n.pitch % 12) + 12) % 12] += n.duration;
 
-  let bestScore = -1;
-  let bestRoot = 0;
-  let bestMinor = false;
-
+  let bestScore = -1, bestRoot = 0, bestMinor = false;
   for (let root = 0; root < 12; root++) {
-    for (const [isMinor, intervals] of [
-      [false, MAJOR_INTERVALS] as const,
-      [true,  MINOR_INTERVALS] as const,
-    ]) {
+    for (const [isMinor, intervals] of [[false, MAJOR_INTERVALS] as const, [true, MINOR_INTERVALS] as const]) {
       const diatonic = new Set(intervals.map(i => (root + i) % 12));
       let score = 0;
-      for (let pc = 0; pc < 12; pc++) {
-        if (diatonic.has(pc)) score += weights[pc];
-        else score -= weights[pc] * 0.5; // penalise chromatic notes
-      }
+      for (let pc = 0; pc < 12; pc++) score += diatonic.has(pc) ? weights[pc] : -weights[pc] * 0.5;
       if (score > bestScore) { bestScore = score; bestRoot = root; bestMinor = isMinor; }
     }
   }
-
   return {
-    root: bestRoot,
-    isMinor: bestMinor,
+    root: bestRoot, isMinor: bestMinor,
     triads: (bestMinor ? MINOR_TRIADS : MAJOR_TRIADS).map(([a, b, c]) => [
-      (bestRoot + a) % 12,
-      (bestRoot + b) % 12,
-      (bestRoot + c) % 12,
+      (bestRoot + a) % 12, (bestRoot + b) % 12, (bestRoot + c) % 12,
     ]),
   };
 }
 
 // ---------------------------------------------------------------------------
-// Segmentation — 1-bar base; split to half-bar when melody leaps ≥ a 4th
+// Segmentation
 // ---------------------------------------------------------------------------
 
-interface Segment {
-  startBeat: number;
-  endBeat: number;
-  notes: Note[];
-}
+interface Segment { startBeat: number; endBeat: number; notes: Note[]; }
 
 function segmentNotes(notes: Note[], clipLengthBeats: number): Segment[] {
   const bars = Math.ceil(clipLengthBeats / 4);
   const segments: Segment[] = [];
-
   for (let bar = 0; bar < bars; bar++) {
-    const barStart = bar * 4;
-    const barEnd = Math.min(barStart + 4, clipLengthBeats);
+    const barStart = bar * 4, barEnd = Math.min(barStart + 4, clipLengthBeats);
     const barNotes = notes.filter(n => n.beat >= barStart && n.beat < barEnd);
-
-    // Detect if there's a leap of ≥ 5 semitones between first and second half
     const firstHalf = barNotes.filter(n => n.beat < barStart + 2);
     const secondHalf = barNotes.filter(n => n.beat >= barStart + 2);
-
     const dominantPc = (ns: Note[]) => {
       const w = new Array<number>(12).fill(0);
       for (const n of ns) w[((n.pitch % 12) + 12) % 12] += n.duration;
       return w.indexOf(Math.max(...w));
     };
-
     const leaps = firstHalf.length > 0 && secondHalf.length > 0 &&
       Math.abs(dominantPc(firstHalf) - dominantPc(secondHalf)) >= 5;
-
     if (leaps) {
       segments.push({ startBeat: barStart,     endBeat: barStart + 2, notes: firstHalf });
       segments.push({ startBeat: barStart + 2, endBeat: barEnd,       notes: secondHalf });
@@ -113,63 +72,101 @@ function segmentNotes(notes: Note[], clipLengthBeats: number): Segment[] {
       segments.push({ startBeat: barStart, endBeat: barEnd, notes: barNotes });
     }
   }
-
   return segments;
 }
 
 // ---------------------------------------------------------------------------
-// Chord selection — best-fitting diatonic triad for each segment
+// Chord selection
 // ---------------------------------------------------------------------------
 
 function pickChord(segment: Segment, key: KeyInfo): [number, number, number] {
   const weights = new Array<number>(12).fill(0);
   for (const n of segment.notes) weights[((n.pitch % 12) + 12) % 12] += n.duration;
-
-  // Prefer I / IV / V (indices 0, 3, 4) as tiebreaker
-  const preferenceBonus = [0.3, 0, 0, 0.2, 0.2, 0, 0];
-
-  let bestScore = -Infinity;
-  let bestTriad = key.triads[0];
-
+  const preference = [0.3, 0, 0, 0.2, 0.2, 0, 0];
+  let bestScore = -Infinity, bestTriad = key.triads[0];
   for (let ti = 0; ti < key.triads.length; ti++) {
-    const triad = key.triads[ti];
-    let score = preferenceBonus[ti] ?? 0;
-    for (const pc of triad) score += weights[pc];
-    if (score > bestScore) { bestScore = score; bestTriad = triad; }
+    let score = preference[ti] ?? 0;
+    for (const pc of key.triads[ti]) score += weights[pc];
+    if (score > bestScore) { bestScore = score; bestTriad = key.triads[ti]; }
   }
-
   return bestTriad;
 }
 
 // ---------------------------------------------------------------------------
-// Public API — generate chord notes for one clip
+// Voicing helpers
 // ---------------------------------------------------------------------------
 
-export function generateChordNotes(melodyNotes: Note[], clipLengthBeats: number): Note[] {
+function voiceTriad(pc1: number, pc2: number, pc3: number, baseOctave: number): [number, number, number] {
+  const root = 12 * (baseOctave + 1) + pc1;
+  const third = root + ((pc2 - pc1 + 12) % 12 || 12);
+  const fifth = root + ((pc3 - pc1 + 12) % 12 || 12);
+  const sorted = [third, fifth].sort((a, b) => a - b) as [number, number];
+  return [root, ...sorted] as [number, number, number];
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+const DEFAULT_CONFIG: ChordConfig = {
+  sourceTrackId: '',
+  noteDuration: 1,
+  octave: 0,
+  style: 'block',
+};
+
+export function generateChordNotes(
+  melodyNotes: Note[],
+  clipLengthBeats: number,
+  config: ChordConfig = DEFAULT_CONFIG,
+): Note[] {
   if (melodyNotes.length === 0) return [];
 
   const key = detectKey(melodyNotes);
   const segments = segmentNotes(melodyNotes, clipLengthBeats);
-  const chordNotes: Note[] = [];
+  const baseOctave = 3 + config.octave;
+  const dur = config.noteDuration;
+  const result: Note[] = [];
 
   for (const seg of segments) {
-    // Skip silent segments
     if (seg.startBeat >= clipLengthBeats) continue;
-
     const [pc1, pc2, pc3] = pickChord(seg, key);
-    const duration = seg.endBeat - seg.startBeat;
+    const [root, third, fifth] = voiceTriad(pc1, pc2, pc3, baseOctave);
 
-    // Voice chord in octave 3 (MIDI 48 = C3), ensuring root < 3rd < 5th
-    const rootPitch = 36 + pc1; // C3 = 48, but root in lower octave 3 range
-    const third  = rootPitch + ((pc2 - pc1 + 12) % 12 || 12);
-    const fifth  = rootPitch + ((pc3 - pc1 + 12) % 12 || 12);
-    // Ensure third < fifth (diminished 5th edge case)
-    const sortedUpper = [third, fifth].sort((a, b) => a - b);
-
-    for (const pitch of [rootPitch, ...sortedUpper]) {
-      chordNotes.push({ id: uid(), pitch, beat: seg.startBeat, duration, velocity: 0.65 });
+    if (config.style === 'bass-only') {
+      for (let beat = seg.startBeat; beat < seg.endBeat - 0.001; beat += dur) {
+        const d = Math.min(dur, seg.endBeat - beat);
+        result.push({ id: uid(), pitch: root, beat, duration: d, velocity: 0.65 });
+      }
+    } else if (config.style === 'block') {
+      for (let beat = seg.startBeat; beat < seg.endBeat - 0.001; beat += dur) {
+        const d = Math.min(dur, seg.endBeat - beat);
+        for (const pitch of [root, third, fifth]) {
+          result.push({ id: uid(), pitch, beat, duration: d, velocity: 0.65 });
+        }
+      }
+    } else if (config.style === 'strum') {
+      for (let beat = seg.startBeat; beat < seg.endBeat - 0.001; beat += dur) {
+        const d = Math.min(dur, seg.endBeat - beat);
+        result.push({ id: uid(), pitch: root,  beat: beat,        duration: d,        velocity: 0.70 });
+        result.push({ id: uid(), pitch: third, beat: beat + 0.05, duration: d - 0.05, velocity: 0.60 });
+        result.push({ id: uid(), pitch: fifth, beat: beat + 0.10, duration: d - 0.10, velocity: 0.55 });
+      }
+    } else {
+      // arpeggio-up or arpeggio-down
+      const pitches = config.style === 'arpeggio-down'
+        ? [root, fifth, third]
+        : [root, third, fifth];
+      let idx = 0;
+      for (let beat = seg.startBeat; beat < seg.endBeat - 0.001; beat += dur) {
+        const d = Math.min(dur, seg.endBeat - beat);
+        result.push({ id: uid(), pitch: pitches[idx % 3], beat, duration: d, velocity: 0.65 });
+        idx++;
+      }
     }
   }
 
-  return chordNotes;
+  return result;
 }
+
+export type { ChordConfig };
