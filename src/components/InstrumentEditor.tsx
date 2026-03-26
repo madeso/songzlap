@@ -20,7 +20,20 @@ function update(instr: Instrument, patch: Partial<Instrument>, dispatch: AppDisp
   dispatch(updateInstrument({ ...instr, ...patch }));
 }
 
-interface SliderProps {
+// Convert polar angle (degrees from north, clockwise) to SVG x/y
+function polar(cx: number, cy: number, r: number, deg: number) {
+  const rad = (deg - 90) * (Math.PI / 180);
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: number) {
+  const s = polar(cx, cy, r, startDeg);
+  const e = polar(cx, cy, r, endDeg);
+  const large = endDeg - startDeg > 180 ? 1 : 0;
+  return `M ${s.x.toFixed(2)} ${s.y.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${e.x.toFixed(2)} ${e.y.toFixed(2)}`;
+}
+
+interface KnobProps {
   label: string;
   value: number;
   min: number;
@@ -28,23 +41,74 @@ interface SliderProps {
   step: number;
   display: string;
   onChange: (v: number) => void;
+  size?: number;
 }
 
-function Knob({ label, value, min, max, step, display, onChange }: SliderProps) {
+const MIN_DEG = -135;
+const MAX_DEG = 135;
+
+function Knob({ label, value, min, max, step, display, onChange, size = 36 }: KnobProps) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const trackR = size * 0.42;
+  const strokeW = size * 0.1;
+  const indR1 = trackR - strokeW * 0.8;
+  const indR2 = trackR + strokeW * 0.1;
+
+  const t = max === min ? 0 : (value - min) / (max - min);
+  const currentDeg = MIN_DEG + t * (MAX_DEG - MIN_DEG);
+
+  const trackPath = arcPath(cx, cy, trackR, MIN_DEG, MAX_DEG);
+  const valuePath = t > 0 ? arcPath(cx, cy, trackR, MIN_DEG, currentDeg) : null;
+  const ind = { from: polar(cx, cy, indR1, currentDeg), to: polar(cx, cy, indR2, currentDeg) };
+
+  function handleMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startValue = value;
+    const range = max - min;
+    const sensitivity = 150;
+
+    const onMove = (ev: MouseEvent) => {
+      const dy = startY - ev.clientY;
+      const raw = startValue + (dy / sensitivity) * range;
+      const clamped = Math.min(max, Math.max(min, raw));
+      const stepped = Math.round(clamped / step) * step;
+      onChange(Number(stepped.toFixed(10)));
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
   return (
-    <label className="flex flex-col gap-0.5 min-w-0 flex-1">
-      <div className="flex justify-between items-baseline">
-        <span className="text-xs text-zinc-500 uppercase tracking-wider">{label}</span>
-        <span className="text-xs font-mono text-zinc-400 tabular-nums">{display}</span>
-      </div>
-      <input
-        type="range"
-        min={min} max={max} step={step}
-        value={value}
-        onChange={e => onChange(Number(e.target.value))}
-        className="w-full h-1 accent-violet-500 cursor-pointer"
-      />
-    </label>
+    <div className="flex flex-col items-center gap-0.5 select-none">
+      <span className="text-xs text-zinc-500 uppercase tracking-wider">{label}</span>
+      <svg
+        width={size} height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        onMouseDown={handleMouseDown}
+        style={{ cursor: 'ns-resize' }}
+        className="block"
+      >
+        {/* Track */}
+        <path d={trackPath} fill="none" stroke="#3f3f46" strokeWidth={strokeW} strokeLinecap="round" />
+        {/* Value arc */}
+        {valuePath && (
+          <path d={valuePath} fill="none" stroke="#7c3aed" strokeWidth={strokeW} strokeLinecap="round" />
+        )}
+        {/* Indicator */}
+        <line
+          x1={ind.from.x.toFixed(2)} y1={ind.from.y.toFixed(2)}
+          x2={ind.to.x.toFixed(2)} y2={ind.to.y.toFixed(2)}
+          stroke="#a78bfa" strokeWidth={strokeW * 0.8} strokeLinecap="round"
+        />
+      </svg>
+      <span className="text-xs font-mono text-zinc-400 tabular-nums">{display}</span>
+    </div>
   );
 }
 
@@ -202,8 +266,8 @@ export default function InstrumentEditor() {
         <Waveform sample={instr.sample} />
       )}
 
-      {/* ADSR row */}
-      <div className="flex gap-4 px-4 py-2">
+      {/* ADSR knobs row */}
+      <div className="flex justify-around px-4 py-3">
         <Knob
           label="A" value={instr.attack} min={0.001} max={2} step={0.001}
           display={fmtTime(instr.attack)}
