@@ -16,6 +16,17 @@ interface Props {
 
 const RESIZE_HANDLE_PX = 8;
 
+const NOTE_LEN_LABELS: [number, string][] = [
+  [8, '2/1'], [4, '1/1'], [3, '3/4'], [2, '1/2'],
+  [1.5, '3/8'], [1, '1/4'], [0.75, '3/16'], [0.5, '1/8'],
+  [0.25, '1/16'], [0.125, '1/32'],
+];
+
+function fmtLen(beats: number): string {
+  const match = NOTE_LEN_LABELS.find(([b]) => Math.abs(b - beats) < 0.01);
+  return match ? match[1] : `${+beats.toFixed(3)}b`;
+}
+
 type DragState =
   | { kind: 'drawing'; pitch: number; startCell: number; endCell: number }
   | { kind: 'resizing'; noteId: string; noteBeat: number; origDurCells: number; curDurCells: number; startX: number }
@@ -30,7 +41,9 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  const lastDurRef = useRef<number>(1); // remembers last placed/resized note duration
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [lastDur, setLastDur] = useState<number>(1);
   const [cursor, setCursor] = useState<string>('crosshair');
 
   useEffect(() => {
@@ -97,13 +110,18 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
       const svgX = rect ? e.clientX - rect.left : 0;
 
       if (ds.kind === 'drawing') {
-        // Click with no drag → 1 beat; drag → spanned duration
+        // Click with no drag → use last duration; drag → spanned duration
         const duration = ds.endCell > ds.startCell
           ? (ds.endCell - ds.startCell + 1) / SUBDIV
-          : 1;
+          : lastDurRef.current;
+        lastDurRef.current = duration;
+        setLastDur(duration);
         dispatch({ type: 'ADD_NOTE', clipId, note: { pitch: ds.pitch, beat: ds.startCell / SUBDIV, duration, velocity: 0.8 } });
       } else if (ds.kind === 'resizing') {
-        dispatch({ type: 'RESIZE_NOTE', clipId, noteId: ds.noteId, duration: ds.curDurCells / SUBDIV });
+        const duration = ds.curDurCells / SUBDIV;
+        lastDurRef.current = duration;
+        setLastDur(duration);
+        dispatch({ type: 'RESIZE_NOTE', clipId, noteId: ds.noteId, duration });
       } else if (ds.kind === 'removing') {
         if (Math.abs(svgX - ds.startX) < 4) {
           dispatch({ type: 'REMOVE_NOTE', clipId, noteId: ds.noteId });
@@ -216,6 +234,9 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
       <div className="flex items-center px-3 gap-2 bg-zinc-900 border-b border-zinc-800 shrink-0" style={{ height: 28 }}>
         <span className="material-symbols-outlined text-violet-400" style={{ fontSize: 14 }}>piano</span>
         <span className="text-xs text-zinc-400 flex-1">Piano Roll</span>
+        <span className="text-xs text-zinc-500 tabular-nums" title="Current note length">
+          <span className="text-zinc-600 mr-1">len</span>{fmtLen(lastDur)}
+        </span>
         <span className="text-xs text-zinc-600">Drag to draw · Drag right edge to resize · Click note to remove</span>
         <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-2">
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
