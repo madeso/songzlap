@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/index';
 import { openClip, addPlacement, removePlacement, setLoop } from '../store/slice';
-import { computeDisplayRange } from '../utils';
+import { computeDisplayRange, midiToName } from '../utils';
 import {
   BEATS_PER_BAR, BAR_WIDTH, TRACK_HEIGHT, RULER_HEIGHT,
   ARRANGEMENT_BARS, CLIP_DEFAULT_BEATS,
@@ -220,12 +220,31 @@ export default function ArrangementGrid({ currentBeat }: Props) {
                     {(() => {
                       const { displayMin, displayMax } = computeDisplayRange(clip.notes);
                       const range = displayMax - displayMin;
-                      return clip.notes.map(note => {
-                        const nx = cx + 2 + (note.beat / clip.lengthBeats) * (cw - 4);
-                        const nw = Math.max((note.duration / clip.lengthBeats) * (cw - 4), 2);
-                        const ny = rowY + 4 + ((displayMax - 1 - note.pitch) / range) * (TRACK_HEIGHT - 8);
-                        return <rect key={note.id} x={nx} y={ny} width={nw} height={2} fill={track.color} opacity={0.9} />;
-                      });
+                      const minPitch = clip.notes.length > 0 ? Math.min(...clip.notes.map(n => n.pitch)) : null;
+                      const maxPitch = clip.notes.length > 0 ? Math.max(...clip.notes.map(n => n.pitch)) : null;
+                      const label = minPitch !== null && maxPitch !== null
+                        ? (Math.floor(minPitch / 12) === Math.floor(maxPitch / 12)
+                          ? `${midiToName(minPitch).replace(/[^-\d]/g, '')}` // same octave — show just number
+                          : `${Math.floor(minPitch / 12) - 1}–${Math.floor(maxPitch / 12) - 1}`)
+                        : null;
+                      return (
+                        <>
+                          {clip.notes.map(note => {
+                            const nx = cx + 2 + (note.beat / clip.lengthBeats) * (cw - 4);
+                            const nw = Math.max((note.duration / clip.lengthBeats) * (cw - 4), 2);
+                            const ny = rowY + 4 + ((displayMax - 1 - note.pitch) / range) * (TRACK_HEIGHT - 8);
+                            return <rect key={note.id} x={nx} y={ny} width={nw} height={2} fill={track.color} opacity={0.9} />;
+                          })}
+                          {label && cw > 28 && (
+                            <text
+                              x={cx + 4} y={rowY + TRACK_HEIGHT - 4}
+                              fontSize={9} fontFamily="Inter, sans-serif"
+                              fill={track.color} opacity={0.7}
+                              style={{ pointerEvents: 'none' }}
+                            >{label}</text>
+                          )}
+                        </>
+                      );
                     })()}
                   </g>
                 );
