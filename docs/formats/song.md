@@ -2,40 +2,49 @@
 
 A `.song` file is a plain JSON snapshot of the application state. It is created by **Export Song** in the transport bar and loaded by **Import Song**. The same structure is also persisted to `localStorage` under the key `tunes-song` (with sample PCM stripped — see below).
 
+The canonical TypeScript types live in `src/types.ts`. The sections below mirror those types with added documentation.
+
 ---
 
-## Top-level object
+## Top-level (`AppState`)
 
-```jsonc
-{
-  "bpm": 120,
-  "playbackMode": "song",        // "song" | "track"
-  "selectedTrackId": null,       // string | null
-  "loopEnabled": false,
-  "loopStart": 0,                // beats
-  "loopEnd": 32,                 // beats
-  "openClipId": null,            // string | null  (UI state — ignored on import)
-  "openInstrumentId": null,      // string | null  (UI state — ignored on import)
-  "tracks": [ ...Track ],
-  "clips": { "<clipId>": ...Clip },
-  "instruments": { "<instrumentId>": ...Instrument }
+`playing` is **never written** to disk — it is always forced to `false` on load.
+`openClipId` and `openInstrumentId` are UI-only and ignored on import.
+
+```typescript
+interface SongFile {
+  bpm: number;
+
+  /** "song" plays the full arrangement; "track" plays only selectedTrackId on loop */
+  playbackMode: 'song' | 'track';
+  selectedTrackId: string | null;
+
+  loopEnabled: boolean;
+  loopStart: number;   // beats
+  loopEnd: number;     // beats
+
+  /** UI state — written but ignored on import */
+  openClipId: string | null;
+  openInstrumentId: string | null;
+
+  tracks: Track[];
+  clips: Record<string, Clip>;       // keyed by Clip.id
+  instruments: Record<string, Instrument>; // keyed by Instrument.id
 }
 ```
-
-`playing` is **never written** — it is always set to `false` on load.
 
 ---
 
 ## Track
 
-```jsonc
-{
-  "id": "abc123",
-  "name": "Melody",
-  "instrumentId": "lead",        // key in the instruments map
-  "muted": false,
-  "color": "#6366f1",
-  "placements": [ ...Placement ]
+```typescript
+interface Track {
+  id: string;
+  name: string;
+  instrumentId: string; // key in instruments map
+  muted: boolean;
+  color: string;        // CSS hex colour, e.g. "#6366f1"
+  placements: Placement[];
 }
 ```
 
@@ -45,11 +54,11 @@ A `.song` file is a plain JSON snapshot of the application state. It is created 
 
 A clip placed at a position in the arrangement timeline.
 
-```jsonc
-{
-  "id": "def456",
-  "clipId": "ghi789",            // key in the clips map
-  "startBeat": 0                 // beat offset from song start
+```typescript
+interface Placement {
+  id: string;
+  clipId: string;    // key in clips map
+  startBeat: number; // beat offset from song start
 }
 ```
 
@@ -57,11 +66,11 @@ A clip placed at a position in the arrangement timeline.
 
 ## Clip
 
-```jsonc
-{
-  "id": "ghi789",
-  "lengthBeats": 8,
-  "notes": [ ...Note ]
+```typescript
+interface Clip {
+  id: string;
+  lengthBeats: number;
+  notes: Note[];
 }
 ```
 
@@ -71,13 +80,13 @@ A clip placed at a position in the arrangement timeline.
 
 All timing is in **beats** (quarter-notes at the song BPM).
 
-```jsonc
-{
-  "id": "jkl012",
-  "pitch": 60,        // MIDI note number (60 = C4, 69 = A4)
-  "beat": 0,          // start offset within the clip (0-indexed)
-  "duration": 0.5,    // length in beats (0.25 = 1/16th, 0.5 = 1/8th, 1 = quarter, …)
-  "velocity": 0.8     // 0–1
+```typescript
+interface Note {
+  id: string;
+  pitch: number;    // MIDI note number — 60 = C4, 69 = A4
+  beat: number;     // start offset within the clip (0-indexed)
+  duration: number; // length in beats — 0.25 = 1/16th, 0.5 = 1/8th, 1 = quarter, 2 = half, 4 = whole
+  velocity: number; // 0–1
 }
 ```
 
@@ -85,40 +94,46 @@ All timing is in **beats** (quarter-notes at the song BPM).
 
 ## Instrument
 
-### Oscillator instrument (`type: "osc"`)
+### Oscillator instrument
 
-```jsonc
-{
-  "id": "lead",
-  "name": "Lead",
-  "type": "osc",
-  "osc": "sawtooth",   // "sine" | "square" | "sawtooth" | "triangle"
-  "attack":  0.01,     // seconds
-  "decay":   0.1,      // seconds
-  "sustain": 0.7,      // 0–1 (level)
-  "release": 0.3       // seconds
+```typescript
+interface OscInstrument {
+  id: string;
+  name: string;
+  type: 'osc';
+  osc: 'sine' | 'square' | 'sawtooth' | 'triangle';
+  attack: number;  // seconds
+  decay: number;   // seconds
+  sustain: number; // 0–1 (amplitude level)
+  release: number; // seconds
+  sample?: never;
 }
 ```
 
-### Sample instrument (`type: "sample"`)
+### Sample instrument
 
-Same ADSR fields as above, plus a `sample` object:
+Same ADSR fields as above. `osc` is present for round-trip safety but unused during playback.
 
-```jsonc
-{
-  "id": "snare",
-  "name": "Snare",
-  "type": "sample",
-  "osc": "sine",       // unused for sample instruments, kept for round-trip safety
-  "attack": 0, "decay": 0, "sustain": 1, "release": 0.1,
-  "sample": {
-    "pcm": [ 0, 12, -8, … ],  // 8-bit signed integers (−128..127)
-    "sampleRate": 8363,        // Hz — 8363 is the Amiga C-3 standard used by MOD files
-    "loopStart": 0,            // frame index (0 = no loop when loopLength is also 0)
-    "loopLength": 0,           // frames; 0 means one-shot (no loop)
-    "finetune": 0,             // −8..7 (Amiga ProTracker finetune)
-    "baseNote": 48             // MIDI note for unshifted playback (48 = C-3)
-  }
+```typescript
+interface SampleInstrument {
+  id: string;
+  name: string;
+  type: 'sample';
+  osc: OscillatorType; // kept for schema consistency; ignored during playback
+  attack: number;
+  decay: number;
+  sustain: number;
+  release: number;
+  sample: SampleData;
+}
+
+interface SampleData {
+  pcm: number[];      // 8-bit signed integers, −128..127
+  sampleRate: number; // Hz — standard Amiga C-3 rate is 8363
+  loopStart: number;  // frame index; ignored when loopLength === 0
+  loopLength: number; // frames; 0 = one-shot (no loop)
+  finetune: number;   // −8..7 (ProTracker finetune)
+  baseNote: number;   // MIDI note for unshifted playback — 48 = C-3
 }
 ```
 
