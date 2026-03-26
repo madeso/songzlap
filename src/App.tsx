@@ -99,7 +99,7 @@ function App() {
             [k, instr.type === 'sample' ? { ...instr, sample: undefined } : instr]
           )),
         }
-        localStorage.setItem('tunes-song', JSON.stringify(toSave))
+        localStorage.setItem('song-zlap-song', JSON.stringify(toSave))
       } catch { /* quota */ }
     }, 800)
     return () => clearTimeout(id)
@@ -115,7 +115,7 @@ function App() {
 
   const newSong = useCallback(() => {
     if (!confirm('Start a new song? Unsaved changes will be lost.')) return
-    localStorage.removeItem('tunes-song')
+    localStorage.removeItem('song-zlap-song')
     sampleCacheRef.current = {}
     dispatch(loadSong(makeEmptyState()))
   }, [dispatch])

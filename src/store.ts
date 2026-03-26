@@ -66,7 +66,7 @@ function buildDefaultState(): AppState {
 
 export function makeInitialState(): AppState {
   try {
-    const saved = localStorage.getItem('tunes-song');
+    const saved = localStorage.getItem('song-zlap-song');
     if (saved) {
       const parsed = JSON.parse(saved) as AppState;
       if (parsed.tracks && parsed.clips && parsed.instruments) {

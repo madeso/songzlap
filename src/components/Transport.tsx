@@ -36,7 +36,7 @@ export default function Transport({
   return (
     <header className="flex items-center gap-3 px-3 h-12 bg-zinc-900 border-b border-zinc-800 shrink-0 select-none flex-wrap">
       <span className="font-['Space_Grotesk'] font-semibold text-base text-violet-400 tracking-tight">
-        tunes
+        song zlap
       </span>
 
       {/* Play / Stop */}
