@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch } from 'react';
-import type { Clip, Action } from '../types';
+import type { Clip, Action, Note } from '../types';
 import {
   PR_NOTE_MIN, PR_NOTE_MAX, PR_NOTE_COUNT, PR_NOTE_HEIGHT,
   PR_KEY_WIDTH, PR_CELL_WIDTH, BEATS_PER_BAR, SUBDIV,
@@ -14,6 +14,13 @@ interface Props {
   onClose: () => void;
 }
 
+const RESIZE_HANDLE_PX = 8;
+
+type DragState =
+  | { kind: 'drawing'; pitch: number; startCell: number; endCell: number }
+  | { kind: 'resizing'; noteId: string; noteBeat: number; origDurCells: number; curDurCells: number; startX: number }
+  | { kind: 'removing'; noteId: string; startX: number };
+
 export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
   const totalCells = clip.lengthBeats * SUBDIV;
   const gridWidth = totalCells * PR_CELL_WIDTH;
@@ -21,8 +28,11 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
   const totalHeight = PR_NOTE_COUNT * PR_NOTE_HEIGHT;
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [cursor, setCursor] = useState<string>('crosshair');
 
-  // Scroll to show C4 on mount
   useEffect(() => {
     if (scrollRef.current) {
       const c4Y = (PR_NOTE_MAX - 1 - 60) * PR_NOTE_HEIGHT;
@@ -32,30 +42,173 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
 
   const pitchToY = (pitch: number) => (PR_NOTE_MAX - 1 - pitch) * PR_NOTE_HEIGHT;
 
-  const handleGridClick = useCallback((e: React.MouseEvent<SVGRectElement>) => {
-    const rect = (e.currentTarget as Element).getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+  const getSvgCoords = useCallback((clientX: number, clientY: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }, []);
 
-    const cellIndex = Math.floor(x / PR_CELL_WIDTH);
-    const pitchIndex = Math.floor(y / PR_NOTE_HEIGHT);
-    const pitch = PR_NOTE_MAX - 1 - pitchIndex;
-    const beatStart = cellIndex / SUBDIV;
-
-    if (pitch < PR_NOTE_MIN || pitch >= PR_NOTE_MAX) return;
-
-    const existing = clip.notes.find(n => {
-      const noteStartCell = Math.floor(n.beat * SUBDIV);
-      const noteEndCell = Math.floor((n.beat + n.duration) * SUBDIV);
-      return cellIndex >= noteStartCell && cellIndex < noteEndCell && n.pitch === pitch;
+  // Find the note at a given SVG coordinate
+  const findNoteAt = useCallback((svgX: number, svgY: number): Note | undefined => {
+    const cell = Math.floor((svgX - PR_KEY_WIDTH) / PR_CELL_WIDTH);
+    const pitch = PR_NOTE_MAX - 1 - Math.floor(svgY / PR_NOTE_HEIGHT);
+    return clip.notes.find(n => {
+      const startCell = Math.round(n.beat * SUBDIV);
+      const endCell = startCell + Math.max(1, Math.round(n.duration * SUBDIV));
+      return n.pitch === pitch && cell >= startCell && cell < endCell;
     });
+  }, [clip.notes]);
 
-    if (existing) {
-      dispatch({ type: 'REMOVE_NOTE', clipId, noteId: existing.id });
+  // Global drag handlers
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const ds = dragRef.current;
+      if (!ds) return;
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const svgX = e.clientX - rect.left;
+
+      if (ds.kind === 'drawing') {
+        const raw = Math.floor((svgX - PR_KEY_WIDTH) / PR_CELL_WIDTH);
+        const endCell = Math.max(ds.startCell, Math.min(totalCells - 1, raw));
+        if (endCell !== ds.endCell) {
+          const next = { ...ds, endCell };
+          dragRef.current = next;
+          setDragState(next);
+        }
+      } else if (ds.kind === 'resizing') {
+        const deltaCells = Math.round((svgX - ds.startX) / PR_CELL_WIDTH);
+        const newCells = Math.max(1, ds.origDurCells + deltaCells);
+        if (newCells !== ds.curDurCells) {
+          const next = { ...ds, curDurCells: newCells };
+          dragRef.current = next;
+          setDragState(next);
+        }
+      }
+    };
+
+    const onUp = (e: MouseEvent) => {
+      const ds = dragRef.current;
+      if (!ds) return;
+      dragRef.current = null;
+      setDragState(null);
+      setCursor('crosshair');
+      const rect = svgRef.current?.getBoundingClientRect();
+      const svgX = rect ? e.clientX - rect.left : 0;
+
+      if (ds.kind === 'drawing') {
+        // Click with no drag → 1 beat; drag → spanned duration
+        const duration = ds.endCell > ds.startCell
+          ? (ds.endCell - ds.startCell + 1) / SUBDIV
+          : 1;
+        dispatch({ type: 'ADD_NOTE', clipId, note: { pitch: ds.pitch, beat: ds.startCell / SUBDIV, duration, velocity: 0.8 } });
+      } else if (ds.kind === 'resizing') {
+        dispatch({ type: 'RESIZE_NOTE', clipId, noteId: ds.noteId, duration: ds.curDurCells / SUBDIV });
+      } else if (ds.kind === 'removing') {
+        if (Math.abs(svgX - ds.startX) < 4) {
+          dispatch({ type: 'REMOVE_NOTE', clipId, noteId: ds.noteId });
+        }
+      }
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [clipId, dispatch, totalCells]);
+
+  const handleOverlayMouseMove = useCallback((e: React.MouseEvent<SVGRectElement>) => {
+    if (dragRef.current) return;
+    const coords = getSvgCoords(e.clientX, e.clientY);
+    if (!coords) return;
+    const note = findNoteAt(coords.x, coords.y);
+    if (note) {
+      const noteEndX = PR_KEY_WIDTH + (note.beat + note.duration) * SUBDIV * PR_CELL_WIDTH;
+      setCursor(noteEndX - coords.x <= RESIZE_HANDLE_PX ? 'ew-resize' : 'pointer');
     } else {
-      dispatch({ type: 'ADD_NOTE', clipId, note: { pitch, beat: beatStart, duration: 1, velocity: 0.8 } });
+      setCursor('crosshair');
     }
-  }, [clip.notes, clipId, dispatch]);
+  }, [getSvgCoords, findNoteAt]);
+
+  const handleOverlayMouseDown = useCallback((e: React.MouseEvent<SVGRectElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const coords = getSvgCoords(e.clientX, e.clientY);
+    if (!coords) return;
+    const { x: svgX, y: svgY } = coords;
+    const cell = Math.floor((svgX - PR_KEY_WIDTH) / PR_CELL_WIDTH);
+    const pitch = PR_NOTE_MAX - 1 - Math.floor(svgY / PR_NOTE_HEIGHT);
+
+    if (cell < 0 || cell >= totalCells || pitch < PR_NOTE_MIN || pitch >= PR_NOTE_MAX) return;
+
+    const note = findNoteAt(svgX, svgY);
+    if (note) {
+      const noteEndX = PR_KEY_WIDTH + (note.beat + note.duration) * SUBDIV * PR_CELL_WIDTH;
+      if (noteEndX - svgX <= RESIZE_HANDLE_PX) {
+        const origDurCells = Math.max(1, Math.round(note.duration * SUBDIV));
+        const ds: DragState = { kind: 'resizing', noteId: note.id, noteBeat: note.beat, origDurCells, curDurCells: origDurCells, startX: svgX };
+        dragRef.current = ds;
+        setDragState(ds);
+        setCursor('ew-resize');
+      } else {
+        const ds: DragState = { kind: 'removing', noteId: note.id, startX: svgX };
+        dragRef.current = ds;
+        setDragState(ds);
+      }
+    } else {
+      const ds: DragState = { kind: 'drawing', pitch, startCell: cell, endCell: cell };
+      dragRef.current = ds;
+      setDragState(ds);
+    }
+  }, [getSvgCoords, findNoteAt, totalCells]);
+
+  const renderNote = (note: Note) => {
+    let durCells = Math.max(1, Math.round(note.duration * SUBDIV));
+    if (dragState?.kind === 'resizing' && dragState.noteId === note.id) {
+      durCells = dragState.curDurCells;
+    }
+    const isRemoving = dragState?.kind === 'removing' && dragState.noteId === note.id;
+    const y = pitchToY(note.pitch);
+    const x = PR_KEY_WIDTH + note.beat * SUBDIV * PR_CELL_WIDTH;
+    const totalW = durCells * PR_CELL_WIDTH - 2;
+    const bodyW = Math.max(totalW - RESIZE_HANDLE_PX, 2);
+    const handleW = Math.min(RESIZE_HANDLE_PX, totalW) - 1;
+
+    return (
+      <g key={note.id} style={{ pointerEvents: 'none' }}>
+        <rect
+          x={x + 1} y={y + 2}
+          width={bodyW} height={PR_NOTE_HEIGHT - 3}
+          fill={isRemoving ? '#6d28d9' : '#8b5cf6'}
+          rx={2}
+        />
+        <rect
+          x={x + 1 + bodyW} y={y + 2}
+          width={handleW} height={PR_NOTE_HEIGHT - 3}
+          fill="#a78bfa"
+          rx={2}
+        />
+      </g>
+    );
+  };
+
+  const renderGhost = () => {
+    if (!dragState || dragState.kind !== 'drawing') return null;
+    const { pitch, startCell, endCell } = dragState;
+    const y = pitchToY(pitch);
+    const x = PR_KEY_WIDTH + startCell * PR_CELL_WIDTH;
+    const w = (endCell - startCell + 1) * PR_CELL_WIDTH - 2;
+    return (
+      <rect
+        x={x + 1} y={y + 2}
+        width={Math.max(w, 4)} height={PR_NOTE_HEIGHT - 3}
+        fill="#8b5cf6" opacity={0.45} rx={2}
+        style={{ pointerEvents: 'none' }}
+      />
+    );
+  };
 
   return (
     <div className="border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0" style={{ height: 280 }}>
@@ -63,7 +216,7 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
       <div className="flex items-center px-3 gap-2 bg-zinc-900 border-b border-zinc-800 shrink-0" style={{ height: 28 }}>
         <span className="material-symbols-outlined text-violet-400" style={{ fontSize: 14 }}>piano</span>
         <span className="text-xs text-zinc-400 flex-1">Piano Roll</span>
-        <span className="text-xs text-zinc-600">Click to add note · Click note to remove</span>
+        <span className="text-xs text-zinc-600">Drag to draw · Drag right edge to resize · Click note to remove</span>
         <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-2">
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
         </button>
@@ -71,7 +224,7 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
 
       {/* Scrollable grid */}
       <div ref={scrollRef} className="flex-1 overflow-auto">
-        <svg width={totalWidth} height={totalHeight} className="block select-none">
+        <svg ref={svgRef} width={totalWidth} height={totalHeight} className="block select-none">
 
           {/* Piano keys + row backgrounds */}
           {Array.from({ length: PR_NOTE_COUNT }, (_, i) => {
@@ -82,10 +235,8 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
 
             return (
               <g key={pitch}>
-                {/* Key */}
                 <rect x={0} y={y} width={PR_KEY_WIDTH} height={PR_NOTE_HEIGHT}
                   fill={black ? '#1c1c24' : '#2a2a30'} stroke="#3f3f46" strokeWidth={0.5} />
-                {/* Label for C notes and F notes */}
                 {(isC || pitch % 12 === 5) && (
                   <text x={PR_KEY_WIDTH - 5} y={y + PR_NOTE_HEIGHT - 3}
                     textAnchor="end" fill={isC ? '#a78bfa' : '#4b5563'}
@@ -93,7 +244,6 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
                     {midiToName(pitch)}
                   </text>
                 )}
-                {/* Row background in grid area */}
                 <rect x={PR_KEY_WIDTH} y={y} width={gridWidth} height={PR_NOTE_HEIGHT}
                   fill={black ? '#0f0f14' : '#141418'} />
               </g>
@@ -118,35 +268,25 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
               stroke="#1f1f26" strokeWidth={0.5} />
           ))}
 
-          {/* Transparent click overlay for the grid */}
+          {/* Notes (no pointer events — overlay handles everything) */}
+          {clip.notes.map(renderNote)}
+
+          {/* Ghost preview while drawing */}
+          {renderGhost()}
+
+          {/* Interaction overlay — rendered last so it sits on top */}
           <rect
             x={PR_KEY_WIDTH} y={0}
             width={gridWidth} height={totalHeight}
             fill="transparent"
-            style={{ cursor: 'pointer' }}
-            onClick={handleGridClick}
+            style={{ cursor }}
+            onMouseDown={handleOverlayMouseDown}
+            onMouseMove={handleOverlayMouseMove}
+            onMouseLeave={() => { if (!dragRef.current) setCursor('crosshair'); }}
           />
-
-          {/* Notes */}
-          {clip.notes.map(note => {
-            const y = pitchToY(note.pitch);
-            const x = PR_KEY_WIDTH + note.beat * SUBDIV * PR_CELL_WIDTH;
-            const w = Math.max(note.duration * SUBDIV * PR_CELL_WIDTH - 2, 4);
-            return (
-              <rect key={note.id}
-                x={x + 1} y={y + 2}
-                width={w} height={PR_NOTE_HEIGHT - 3}
-                fill="#8b5cf6" rx={2}
-                style={{ cursor: 'pointer' }}
-                onClick={e => {
-                  e.stopPropagation();
-                  dispatch({ type: 'REMOVE_NOTE', clipId, noteId: note.id });
-                }}
-              />
-            );
-          })}
         </svg>
       </div>
     </div>
   );
 }
+

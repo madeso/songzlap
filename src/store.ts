@@ -106,6 +106,20 @@ export function reducer(state: AppState, action: Action): AppState {
       if (!clip) return state;
       return { ...state, clips: { ...state.clips, [action.clipId]: { ...clip, notes: clip.notes.filter(n => n.id !== action.noteId) } } };
     }
+    case 'RESIZE_NOTE': {
+      const clip = state.clips[action.clipId];
+      if (!clip) return state;
+      return {
+        ...state,
+        clips: {
+          ...state.clips,
+          [action.clipId]: {
+            ...clip,
+            notes: clip.notes.map(n => n.id === action.noteId ? { ...n, duration: action.duration } : n),
+          },
+        },
+      };
+    }
     case 'SET_BPM':
       return { ...state, bpm: action.bpm };
     case 'SET_PLAYING':

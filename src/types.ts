@@ -57,5 +57,6 @@ export type Action =
   | { type: 'OPEN_CLIP'; clipId: string | null }
   | { type: 'ADD_NOTE'; clipId: string; note: Omit<Note, 'id'> }
   | { type: 'REMOVE_NOTE'; clipId: string; noteId: string }
+  | { type: 'RESIZE_NOTE'; clipId: string; noteId: string; duration: number }
   | { type: 'SET_BPM'; bpm: number }
   | { type: 'SET_PLAYING'; playing: boolean };
