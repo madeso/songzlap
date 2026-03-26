@@ -6,7 +6,7 @@ import {
   PR_NOTE_HEIGHT,
   PR_KEY_WIDTH, PR_CELL_WIDTH, BEATS_PER_BAR, SUBDIV,
 } from '../constants';
-import { midiToName, isBlackKey } from '../utils';
+import { midiToName, isBlackKey, computeDisplayRange } from '../utils';
 
 const RESIZE_HANDLE_PX = 8;
 
@@ -25,15 +25,6 @@ type DragState =
   | { kind: 'drawing'; pitch: number; startCell: number; endCell: number }
   | { kind: 'resizing'; noteId: string; noteBeat: number; origDurCells: number; curDurCells: number; startX: number }
   | { kind: 'removing'; noteId: string; startX: number };
-
-function computeDisplayRange(notes: Note[]): { displayMin: number; displayMax: number } {
-  const minPitch = notes.length > 0 ? Math.min(...notes.map(n => n.pitch)) : 60;
-  const maxPitch = notes.length > 0 ? Math.max(...notes.map(n => n.pitch)) : 71;
-  return {
-    displayMin: (Math.floor(minPitch / 12) - 1) * 12,
-    displayMax: (Math.floor(maxPitch / 12) + 2) * 12,
-  };
-}
 
 export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const dispatch = useAppDispatch()
