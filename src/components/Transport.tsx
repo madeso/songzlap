@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/index';
 import { setBpm, setPlaybackMode, setLoop } from '../store/slice';
 import { formatBeatTime } from '../utils';
 import { ARRANGEMENT_BARS, BEATS_PER_BAR } from '../constants';
+import { DEMO_SONGS } from '../demosong';
+import type { AppState } from '../types';
 
 interface Props {
   currentBeat: number;
@@ -13,11 +16,12 @@ interface Props {
   onNewSong: () => void;
   instrumentsPanelOpen: boolean;
   onToggleInstruments: () => void;
+  onLoadDemo: (state: Omit<AppState, 'playing'>) => void;
 }
 
 export default function Transport({
   currentBeat, onPlayToggle, onExportSong, onImportSong, onImportMod, onExportWav, onNewSong,
-  instrumentsPanelOpen, onToggleInstruments,
+  instrumentsPanelOpen, onToggleInstruments, onLoadDemo,
 }: Props) {
   const dispatch = useAppDispatch()
   const bpm = useAppSelector(s => s.song.bpm)
@@ -27,6 +31,7 @@ export default function Transport({
   const loopStart = useAppSelector(s => s.song.loopStart)
   const loopEnd = useAppSelector(s => s.song.loopEnd)
   const maxBeats = ARRANGEMENT_BARS * BEATS_PER_BAR;
+  const [demoOpen, setDemoOpen] = useState(false);
 
   return (
     <header className="flex items-center gap-3 px-3 h-12 bg-zinc-900 border-b border-zinc-800 shrink-0 select-none flex-wrap">
@@ -115,6 +120,36 @@ export default function Transport({
         >
           New
         </button>
+        {/* Demo songs */}
+        <div className="relative">
+          <button
+            onClick={() => setDemoOpen(v => !v)}
+            className={`flex items-center gap-0.5 text-xs px-2 py-1 rounded border transition-colors ${
+              demoOpen
+                ? 'bg-zinc-700 border-zinc-500 text-zinc-200'
+                : 'border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-500'
+            }`}
+            title="Load a demo song"
+          >
+            Demo
+            <span className="material-symbols-outlined" style={{ fontSize: 12 }}>
+              {demoOpen ? 'expand_less' : 'expand_more'}
+            </span>
+          </button>
+          {demoOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded shadow-xl min-w-48 py-1">
+              {DEMO_SONGS.map(demo => (
+                <button
+                  key={demo.name}
+                  onClick={() => { onLoadDemo(demo.make()); setDemoOpen(false); }}
+                  className="block w-full text-left text-xs px-3 py-1.5 text-zinc-300 hover:bg-zinc-800 hover:text-violet-300 transition-colors"
+                >
+                  {demo.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {/* Import MOD */}
         <button
           onClick={onImportMod}

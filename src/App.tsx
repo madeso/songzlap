@@ -162,6 +162,12 @@ function App() {
     downloadBlob(encodeWAV(buffer), 'song.wav')
   }, [song, ensureSampleCache])
 
+  const loadDemo = useCallback((state: Omit<AppState, 'playing'>) => {
+    if (!confirm('Load demo song? Unsaved changes will be lost.')) return
+    sampleCacheRef.current = {}
+    dispatch(loadSong(state))
+  }, [dispatch])
+
   // Auto-open the instruments panel when an instrument is selected (e.g. via track header ✎)
   useEffect(() => {
     if (song.openInstrumentId) setInstrumentsPanelOpen(true)
@@ -179,6 +185,7 @@ function App() {
         onNewSong={newSong}
         instrumentsPanelOpen={instrumentsPanelOpen}
         onToggleInstruments={() => setInstrumentsPanelOpen(v => !v)}
+        onLoadDemo={loadDemo}
       />
 
       <div className="flex flex-1 overflow-hidden">
