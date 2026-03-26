@@ -1,6 +1,6 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/index';
-import { openClip, addPlacement, removePlacement } from '../store/slice';
+import { openClip, addPlacement, removePlacement, setLoop } from '../store/slice';
 import {
   BEATS_PER_BAR, BAR_WIDTH, TRACK_HEIGHT, RULER_HEIGHT,
   ARRANGEMENT_BARS, CLIP_DEFAULT_BEATS, PR_NOTE_MIN, PR_NOTE_MAX,
@@ -9,6 +9,9 @@ import {
 interface Props {
   currentBeat: number;
 }
+
+const BEAT_PX = BAR_WIDTH / BEATS_PER_BAR;
+const TOTAL_BEATS = ARRANGEMENT_BARS * BEATS_PER_BAR;
 
 export default function ArrangementGrid({ currentBeat }: Props) {
   const dispatch = useAppDispatch()
@@ -23,6 +26,7 @@ export default function ArrangementGrid({ currentBeat }: Props) {
   const totalHeight = RULER_HEIGHT + tracks.length * TRACK_HEIGHT;
 
   const handleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (wasDraggingRef.current) { wasDraggingRef.current = false; return; }
     if (e.button !== 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -78,6 +82,40 @@ export default function ArrangementGrid({ currentBeat }: Props) {
     }
   }, [tracks, clips, dispatch]);
 
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [draggingMarker, setDraggingMarker] = useState<'start' | 'end' | null>(null);
+  // Refs to avoid stale closures in drag effect
+  const loopStartRef = useRef(loopStart);
+  const loopEndRef = useRef(loopEnd);
+  loopStartRef.current = loopStart;
+  loopEndRef.current = loopEnd;
+  // Suppresses the SVG onClick that fires after a marker drag ends
+  const wasDraggingRef = useRef(false);
+
+  useEffect(() => {
+    if (!draggingMarker) return;
+    const onMove = (e: MouseEvent) => {
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const beat = Math.max(0, Math.min(TOTAL_BEATS, Math.round((e.clientX - rect.left) / BEAT_PX)));
+      if (draggingMarker === 'start') {
+        dispatch(setLoop({ start: Math.min(beat, loopEndRef.current - 1) }));
+      } else {
+        dispatch(setLoop({ end: Math.max(beat, loopStartRef.current + 1) }));
+      }
+    };
+    const onUp = () => { wasDraggingRef.current = true; setDraggingMarker(null); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [draggingMarker, dispatch]);
+
+  const startMarkerDrag = useCallback((e: React.MouseEvent, which: 'start' | 'end') => {
+    e.stopPropagation();
+    e.preventDefault();
+    setDraggingMarker(which);
+  }, []);
+
   const playheadX = (currentBeat / BEATS_PER_BAR) * BAR_WIDTH;
   const pitchRange = PR_NOTE_MAX - PR_NOTE_MIN;
   const loopStartX = (loopStart / BEATS_PER_BAR) * BAR_WIDTH;
@@ -86,10 +124,11 @@ export default function ArrangementGrid({ currentBeat }: Props) {
   return (
     <div className="flex-1 overflow-auto">
       <svg
+        ref={svgRef}
         width={totalWidth}
         height={Math.max(totalHeight, 1)}
         className="block select-none"
-        style={{ cursor: 'pointer' }}
+        style={{ cursor: draggingMarker ? 'ew-resize' : 'pointer' }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
@@ -104,6 +143,38 @@ export default function ArrangementGrid({ currentBeat }: Props) {
             <text x={i * BAR_WIDTH + 4} y={16} fill="#71717a" fontSize={11} fontFamily="Inter, sans-serif">{i + 1}</text>
           </g>
         ))}
+
+        {/* Loop marker drag handles in ruler */}
+        {loopEnabled && (() => {
+          const th = RULER_HEIGHT; // triangle height
+          const tw = 7;            // triangle half-width
+          return (
+            <>
+              {/* Start handle: right-pointing flag */}
+              <g style={{ cursor: 'ew-resize' }}
+                onMouseDown={e => startMarkerDrag(e, 'start')}
+                onClick={e => e.stopPropagation()}>
+                <polygon
+                  points={`${loopStartX},${th - 2} ${loopStartX},${th - 2 - tw * 2} ${loopStartX + tw},${th - 2 - tw}`}
+                  fill="#10b981"
+                />
+                {/* Wider hit area */}
+                <rect x={loopStartX - 2} y={0} width={tw + 6} height={th} fill="transparent" />
+              </g>
+              {/* End handle: left-pointing flag */}
+              <g style={{ cursor: 'ew-resize' }}
+                onMouseDown={e => startMarkerDrag(e, 'end')}
+                onClick={e => e.stopPropagation()}>
+                <polygon
+                  points={`${loopEndX},${th - 2} ${loopEndX},${th - 2 - tw * 2} ${loopEndX - tw},${th - 2 - tw}`}
+                  fill="#ef4444"
+                />
+                {/* Wider hit area */}
+                <rect x={loopEndX - tw - 4} y={0} width={tw + 6} height={th} fill="transparent" />
+              </g>
+            </>
+          );
+        })()}
 
         {/* Track rows */}
         {tracks.map((track, ti) => {
