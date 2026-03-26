@@ -71,7 +71,8 @@ function Knob({ label, value, min, max, step, display, onChange, size = 36 }: Kn
 
     const onMove = (ev: MouseEvent) => {
       const dy = startY - ev.clientY;
-      const raw = startValue + (dy / sensitivity) * range;
+      const sens = ev.shiftKey ? sensitivity * 10 : sensitivity;
+      const raw = startValue + (dy / sens) * range;
       const clamped = Math.min(max, Math.max(min, raw));
       const stepped = Math.round(clamped / step) * step;
       onChange(Number(stepped.toFixed(10)));
