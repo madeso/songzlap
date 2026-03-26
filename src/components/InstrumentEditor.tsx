@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import type { Dispatch } from 'react';
-import type { Instrument, Action } from '../types';
+import type { Instrument, Action, SampleData } from '../types';
 
 interface Props {
   instrument: Instrument;
@@ -47,6 +48,98 @@ function Knob({ label, value, min, max, step, display, onChange }: SliderProps) 
         className="w-full h-1 accent-violet-500 cursor-pointer"
       />
     </label>
+  );
+}
+
+const W = 800; // SVG viewBox width (logical units)
+const H = 48;
+const MID = H / 2;
+
+function Waveform({ sample }: { sample: SampleData }) {
+  const { topPoints, botPoints } = useMemo(() => {
+    const { pcm } = sample;
+    if (pcm.length === 0) return { topPoints: `0,${MID} ${W},${MID}`, botPoints: '' };
+
+    // Build a min/max envelope: for each display column, find the min and max PCM value
+    const cols = W;
+    const top: string[] = [];
+    const bot: string[] = [];
+
+    for (let col = 0; col < cols; col++) {
+      const lo = Math.floor((col / cols) * pcm.length);
+      const hi = Math.floor(((col + 1) / cols) * pcm.length);
+      let mn = 127, mx = -128;
+      for (let i = lo; i < hi; i++) {
+        if (pcm[i] < mn) mn = pcm[i];
+        if (pcm[i] > mx) mx = pcm[i];
+      }
+      if (mn > mx) { mn = 0; mx = 0; }
+      // Normalize: pcm values are -128..127, map to y coords
+      const yTop = MID - (mx / 128) * (MID - 2);
+      const yBot = MID - (mn / 128) * (MID - 2);
+      top.push(`${col},${yTop.toFixed(1)}`);
+      bot.push(`${col},${yBot.toFixed(1)}`);
+    }
+
+    return {
+      topPoints: top.join(' '),
+      botPoints: bot.join(' '),
+    };
+  }, [sample]);
+
+  const loopStartX = sample.loopLength > 0
+    ? ((sample.loopStart / sample.pcm.length) * W).toFixed(1)
+    : null;
+  const loopEndX = sample.loopLength > 0
+    ? (((sample.loopStart + sample.loopLength) / sample.pcm.length) * W).toFixed(1)
+    : null;
+
+  const sampleLenMs = Math.round((sample.pcm.length / sample.sampleRate) * 1000);
+
+  return (
+    <div className="px-3 pt-1 pb-0.5">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        height={H}
+        preserveAspectRatio="none"
+        className="block rounded overflow-hidden"
+      >
+        {/* Background */}
+        <rect width={W} height={H} fill="#0c0c12" />
+
+        {/* Centre line */}
+        <line x1={0} y1={MID} x2={W} y2={MID} stroke="#222230" strokeWidth={1} />
+
+        {/* Loop region shading */}
+        {loopStartX !== null && loopEndX !== null && (
+          <rect
+            x={loopStartX} width={Number(loopEndX) - Number(loopStartX)} height={H}
+            fill="#7c3aed" fillOpacity={0.18}
+          />
+        )}
+
+        {/* Waveform: filled area between top and bottom envelopes */}
+        <polyline points={topPoints} fill="none" stroke="#7c3aed" strokeWidth={0.8} opacity={0.9} />
+        <polyline points={botPoints} fill="none" stroke="#7c3aed" strokeWidth={0.8} opacity={0.9} />
+
+        {/* Loop markers */}
+        {loopStartX !== null && (
+          <line x1={loopStartX} y1={0} x2={loopStartX} y2={H}
+            stroke="#10b981" strokeWidth={1} strokeDasharray="3,2" />
+        )}
+        {loopEndX !== null && (
+          <line x1={loopEndX} y1={0} x2={loopEndX} y2={H}
+            stroke="#10b981" strokeWidth={1} strokeDasharray="3,2" />
+        )}
+      </svg>
+      <div className="flex justify-between mt-0.5 mb-1">
+        <span className="text-xs text-zinc-600">{sample.pcm.length.toLocaleString()} frames · {sampleLenMs}ms · {(sample.sampleRate / 1000).toFixed(1)}kHz</span>
+        {sample.loopLength > 0 && (
+          <span className="text-xs text-emerald-700">loop</span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -101,6 +194,11 @@ export default function InstrumentEditor({ instrument: instr, dispatch, onClose 
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
         </button>
       </div>
+
+      {/* Waveform display for sample instruments */}
+      {instr.type === 'sample' && instr.sample && (
+        <Waveform sample={instr.sample} />
+      )}
 
       {/* ADSR row */}
       <div className="flex gap-4 px-4 py-2">
