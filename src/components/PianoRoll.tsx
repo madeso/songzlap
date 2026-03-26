@@ -3,7 +3,7 @@ import type { Note } from '../types';
 import { useAppDispatch, useAppSelector } from '../store/index';
 import { addNote, removeNote, resizeNote, openClip, transposeClip } from '../store/slice';
 import {
-  PR_NOTE_MIN, PR_NOTE_MAX, PR_NOTE_COUNT, PR_NOTE_HEIGHT,
+  PR_NOTE_HEIGHT,
   PR_KEY_WIDTH, PR_CELL_WIDTH, BEATS_PER_BAR, SUBDIV,
 } from '../constants';
 import { midiToName, isBlackKey } from '../utils';
@@ -26,14 +26,26 @@ type DragState =
   | { kind: 'resizing'; noteId: string; noteBeat: number; origDurCells: number; curDurCells: number; startX: number }
   | { kind: 'removing'; noteId: string; startX: number };
 
+function computeDisplayRange(notes: Note[]): { displayMin: number; displayMax: number } {
+  const minPitch = notes.length > 0 ? Math.min(...notes.map(n => n.pitch)) : 60;
+  const maxPitch = notes.length > 0 ? Math.max(...notes.map(n => n.pitch)) : 71;
+  return {
+    displayMin: (Math.floor(minPitch / 12) - 1) * 12,
+    displayMax: (Math.floor(maxPitch / 12) + 2) * 12,
+  };
+}
+
 export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const dispatch = useAppDispatch()
   const clipId = useAppSelector(s => s.song.openClipId)!
   const clip = useAppSelector(s => s.song.clips[clipId])
   const tracks = useAppSelector(s => s.song.tracks)
+
+  const { displayMin, displayMax } = computeDisplayRange(clip?.notes ?? []);
+  const noteCount = displayMax - displayMin;
   const totalCells = (clip?.lengthBeats ?? 0) * SUBDIV;
   const gridWidth = totalCells * PR_CELL_WIDTH;
-  const totalHeight = PR_NOTE_COUNT * PR_NOTE_HEIGHT;
+  const totalHeight = noteCount * PR_NOTE_HEIGHT;
 
   const pianoRef = useRef<HTMLDivElement>(null);
   const gridScrollRef = useRef<HTMLDivElement>(null);
@@ -44,12 +56,24 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const [lastDur, setLastDur] = useState<number>(1);
   const [cursor, setCursor] = useState<string>('crosshair');
 
+  // Refs so callbacks always see the latest display range without stale closures
+  const displayMaxRef = useRef(displayMax);
+  const displayMinRef = useRef(displayMin);
   useEffect(() => {
-    const c4Y = (PR_NOTE_MAX - 1 - 60) * PR_NOTE_HEIGHT;
-    const top = c4Y - 80;
+    displayMaxRef.current = displayMax;
+    displayMinRef.current = displayMin;
+  });
+
+  // Scroll to center of the display range on first mount only
+  const initialScrollDone = useRef(false);
+  useEffect(() => {
+    if (initialScrollDone.current) return;
+    initialScrollDone.current = true;
+    const midPitch = Math.round((displayMin + displayMax - 1) / 2);
+    const top = Math.max(0, (displayMax - 1 - midPitch) * PR_NOTE_HEIGHT - 110);
     if (gridScrollRef.current) gridScrollRef.current.scrollTop = top;
     if (pianoRef.current) pianoRef.current.scrollTop = top;
-  }, []);
+  });
 
   // Keep piano keys in sync with grid vertical scroll
   const handleGridScroll = () => {
@@ -58,7 +82,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     }
   };
 
-  const pitchToY = (pitch: number) => (PR_NOTE_MAX - 1 - pitch) * PR_NOTE_HEIGHT;
+  const pitchToY = (pitch: number) => (displayMax - 1 - pitch) * PR_NOTE_HEIGHT;
 
   const getSvgCoords = useCallback((clientX: number, clientY: number) => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -69,7 +93,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   // Grid SVG has no PR_KEY_WIDTH offset — x=0 is beat 0
   const findNoteAt = useCallback((svgX: number, svgY: number): Note | undefined => {
     const cell = Math.floor(svgX / PR_CELL_WIDTH);
-    const pitch = PR_NOTE_MAX - 1 - Math.floor(svgY / PR_NOTE_HEIGHT);
+    const pitch = displayMaxRef.current - 1 - Math.floor(svgY / PR_NOTE_HEIGHT);
     return clip.notes.find(n => {
       const startCell = Math.round(n.beat * SUBDIV);
       const endCell = startCell + Math.max(1, Math.round(n.duration * SUBDIV));
@@ -162,9 +186,9 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     if (!coords) return;
     const { x: svgX, y: svgY } = coords;
     const cell = Math.floor(svgX / PR_CELL_WIDTH);
-    const pitch = PR_NOTE_MAX - 1 - Math.floor(svgY / PR_NOTE_HEIGHT);
+    const pitch = displayMaxRef.current - 1 - Math.floor(svgY / PR_NOTE_HEIGHT);
 
-    if (cell < 0 || cell >= totalCells || pitch < PR_NOTE_MIN || pitch >= PR_NOTE_MAX) return;
+    if (cell < 0 || cell >= totalCells) return;
 
     const note = findNoteAt(svgX, svgY);
     if (note) {
@@ -193,6 +217,9 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
       durCells = dragState.curDurCells;
     }
     const isRemoving = dragState?.kind === 'removing' && dragState.noteId === note.id;
+    const isOutOfRange = note.pitch < 0 || note.pitch > 127;
+    const bodyColor = isRemoving ? (isOutOfRange ? '#c2410c' : '#6d28d9') : isOutOfRange ? '#f97316' : '#8b5cf6';
+    const handleColor = isOutOfRange ? '#fb923c' : '#a78bfa';
     const y = pitchToY(note.pitch);
     const x = note.beat * SUBDIV * PR_CELL_WIDTH;
     const totalW = durCells * PR_CELL_WIDTH - 2;
@@ -204,13 +231,13 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
         <rect
           x={x + 1} y={y + 2}
           width={bodyW} height={PR_NOTE_HEIGHT - 3}
-          fill={isRemoving ? '#6d28d9' : '#8b5cf6'}
+          fill={bodyColor}
           rx={2}
         />
         <rect
           x={x + 1 + bodyW} y={y + 2}
           width={handleW} height={PR_NOTE_HEIGHT - 3}
-          fill="#a78bfa"
+          fill={handleColor}
           rx={2}
         />
       </g>
@@ -274,8 +301,8 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
         {/* Piano keys — never scrolls horizontally; vertical scroll synced with grid */}
         <div ref={pianoRef} style={{ width: PR_KEY_WIDTH, flexShrink: 0, overflowY: 'hidden', overflowX: 'hidden' }}>
           <svg width={PR_KEY_WIDTH} height={totalHeight} className="block select-none">
-            {Array.from({ length: PR_NOTE_COUNT }, (_, i) => {
-              const pitch = PR_NOTE_MAX - 1 - i;
+            {Array.from({ length: noteCount }, (_, i) => {
+              const pitch = displayMax - 1 - i;
               const y = i * PR_NOTE_HEIGHT;
               const black = isBlackKey(pitch);
               const isC = pitch % 12 === 0;
@@ -301,8 +328,8 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
           <svg ref={svgRef} width={gridWidth} height={totalHeight} className="block select-none">
 
             {/* Row backgrounds */}
-            {Array.from({ length: PR_NOTE_COUNT }, (_, i) => {
-              const pitch = PR_NOTE_MAX - 1 - i;
+            {Array.from({ length: noteCount }, (_, i) => {
+              const pitch = displayMax - 1 - i;
               const y = i * PR_NOTE_HEIGHT;
               const black = isBlackKey(pitch);
               return (
@@ -323,7 +350,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
             })}
 
             {/* Horizontal pitch lines */}
-            {Array.from({ length: PR_NOTE_COUNT + 1 }, (_, i) => (
+            {Array.from({ length: noteCount + 1 }, (_, i) => (
               <line key={i} x1={0} y1={i * PR_NOTE_HEIGHT}
                 x2={gridWidth} y2={i * PR_NOTE_HEIGHT}
                 stroke="#1f1f26" strokeWidth={0.5} />

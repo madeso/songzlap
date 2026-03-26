@@ -9,11 +9,12 @@ export function midiToFreq(note: number): number {
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 export function midiToName(note: number): string {
-  return NOTE_NAMES[note % 12] + (Math.floor(note / 12) - 1);
+  const chroma = ((note % 12) + 12) % 12;
+  return NOTE_NAMES[chroma] + (Math.floor(note / 12) - 1);
 }
 
 export function isBlackKey(note: number): boolean {
-  return [1, 3, 6, 8, 10].includes(note % 12);
+  return [1, 3, 6, 8, 10].includes(((note % 12) + 12) % 12);
 }
 
 export function beatsToSeconds(beats: number, bpm: number): number {

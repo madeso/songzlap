@@ -87,8 +87,10 @@ export default function ArrangementGrid({ currentBeat }: Props) {
   // Refs to avoid stale closures in drag effect
   const loopStartRef = useRef(loopStart);
   const loopEndRef = useRef(loopEnd);
-  loopStartRef.current = loopStart;
-  loopEndRef.current = loopEnd;
+  useEffect(() => {
+    loopStartRef.current = loopStart;
+    loopEndRef.current = loopEnd;
+  });
   // Suppresses the SVG onClick that fires after a marker drag ends
   const wasDraggingRef = useRef(false);
 
