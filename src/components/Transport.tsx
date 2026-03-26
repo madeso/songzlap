@@ -11,10 +11,13 @@ interface Props {
   onImportMod: () => void;
   onExportWav: () => void;
   onNewSong: () => void;
+  instrumentsPanelOpen: boolean;
+  onToggleInstruments: () => void;
 }
 
 export default function Transport({
   currentBeat, onPlayToggle, onExportSong, onImportSong, onImportMod, onExportWav, onNewSong,
+  instrumentsPanelOpen, onToggleInstruments,
 }: Props) {
   const dispatch = useAppDispatch()
   const bpm = useAppSelector(s => s.song.bpm)
@@ -143,6 +146,19 @@ export default function Transport({
           title="Export as WAV"
         >
           WAV
+        </button>
+        {/* Instruments panel toggle */}
+        <button
+          onClick={onToggleInstruments}
+          className={`flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors ${
+            instrumentsPanelOpen
+              ? 'bg-violet-600 border-violet-500 text-white'
+              : 'border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-500'
+          }`}
+          title="Toggle instruments panel"
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>piano</span>
+          Instruments
         </button>
       </div>
     </header>

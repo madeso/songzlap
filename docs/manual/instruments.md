@@ -1,6 +1,41 @@
 # Instruments
 
-Every track has an instrument that determines what its notes sound like. You can have as many instruments as you like and assign them freely to any track.
+Every track has an instrument that determines what its notes sound like. All instruments are managed from the **Instruments panel** on the right side of the screen.
+
+---
+
+## Opening the Instruments Panel
+
+Click the **Instruments** button in the transport bar (top right). The panel slides in as a right sidebar. Click it again, or click **×** inside the panel, to close it.
+
+---
+
+## The Instruments Panel
+
+The panel has three sections:
+
+### Instrument list
+
+All instruments in your song are listed here. Click any row to select it — the row highlights and the **Instrument Editor** opens in the lower part of the panel.
+
+Each row shows:
+- The instrument name
+- A type indicator: `Sine`, `Sqr`, `Saw`, or `Tri` for synthesizers; `smp` for samples
+- A **✕** button to delete the instrument
+
+### Creating a new instrument
+
+Click **New** in the panel header. A blank sine synthesizer is created and immediately selected for editing. Rename it in the editor below.
+
+### Adding from a preset
+
+Click **Add from preset** at the bottom of the list to expand a palette of the 12 built-in sounds. Click any preset to add a copy to your instrument list. The copy is independent — you can edit it without affecting the original preset.
+
+---
+
+## Deleting an Instrument
+
+Click **✕** on an instrument row. If the instrument is currently used by one or more tracks, deletion is blocked and a warning shows how many tracks are using it. Reassign those tracks to a different instrument first, then delete.
 
 ---
 
@@ -15,21 +50,19 @@ There are two kinds of instruments:
 
 ## Assigning an Instrument to a Track
 
-Use the **dropdown** in the track header. All instruments — both synthesizers and samples — appear in this list.
+Use the **dropdown** in the track header (in the left column). All instruments in your song appear in this list.
+
+Clicking the **✎ (tune) icon** in the track header opens the Instruments panel with that track's instrument already selected.
 
 ---
 
 ## The Instrument Editor
 
-Click the **✎ (tune) icon** in any track header to open the Instrument Editor. It docks above the Piano Roll at the bottom of the screen. Click **×** to close it.
-
----
+When an instrument is selected in the panel, its editor appears in the lower part of the panel.
 
 ### Renaming an Instrument
 
 Click the instrument name at the top of the editor and type a new name.
-
----
 
 ### Waveform (synthesizers only)
 
@@ -42,13 +75,9 @@ Four buttons select the oscillator shape:
 | **Saw** | Sawtooth | Bright, cutting, full |
 | **Tri** | Triangle | Mellow, between sine and square |
 
----
-
 ### Waveform Preview (samples only)
 
 Sample instruments show a graphic of the waveform. If the sample has a loop region (common in MOD files), it's highlighted in violet with green markers at the start and end. Below the graphic you'll see the sample length, duration in ms, and sample rate.
-
----
 
 ### Envelope (ADSR)
 
@@ -74,7 +103,7 @@ The four sliders shape how the volume of each note changes over time:
 
 ## The Built-in Synthesizer Presets
 
-Tunes comes with 12 ready-to-use synth sounds. All of them can be edited freely in the Instrument Editor.
+Tunes comes with 12 ready-to-use synth sounds, available via **Add from preset**. All copies can be edited freely.
 
 | Name | Character |
 |---|---|

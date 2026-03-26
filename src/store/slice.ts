@@ -73,6 +73,13 @@ const songSlice = createSlice({
     updateInstrument(state, action: PayloadAction<Instrument>) {
       state.instruments[action.payload.id] = action.payload;
     },
+    addInstrument(state, action: PayloadAction<Instrument>) {
+      state.instruments[action.payload.id] = action.payload;
+    },
+    removeInstrument(state, action: PayloadAction<string>) {
+      delete state.instruments[action.payload];
+      if (state.openInstrumentId === action.payload) state.openInstrumentId = null;
+    },
     openInstrument(state, action: PayloadAction<string | null>) {
       state.openInstrumentId = action.payload;
     },
@@ -97,7 +104,7 @@ export const {
   addTrack, removeTrack, setInstrument, toggleMute,
   addPlacement, removePlacement, openClip,
   addNote, removeNote, resizeNote,
-  setBpm, setPlaying, updateInstrument, openInstrument,
+  setBpm, setPlaying, updateInstrument, addInstrument, removeInstrument, openInstrument,
   loadSong, setPlaybackMode, selectTrack, setLoop,
 } = songSlice.actions;
 

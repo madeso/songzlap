@@ -13,13 +13,14 @@ import Transport from './components/Transport'
 import TrackHeaders from './components/TrackHeaders'
 import ArrangementGrid from './components/ArrangementGrid'
 import PianoRoll from './components/PianoRoll'
-import InstrumentEditor from './components/InstrumentEditor'
+import InstrumentPanel from './components/InstrumentPanel'
 import type { AppState, Instrument, SampleData } from './types'
 
 function App() {
   const dispatch = useAppDispatch()
   const song = useAppSelector(s => s.song)
   const [currentBeat, setCurrentBeat] = useState(0)
+  const [instrumentsPanelOpen, setInstrumentsPanelOpen] = useState(false)
 
   const audioCtxRef = useRef<AudioContext | null>(null)
   const schedulerRef = useRef<Scheduler | null>(null)
@@ -161,6 +162,11 @@ function App() {
     downloadBlob(encodeWAV(buffer), 'song.wav')
   }, [song, ensureSampleCache])
 
+  // Auto-open the instruments panel when an instrument is selected (e.g. via track header ✎)
+  useEffect(() => {
+    if (song.openInstrumentId) setInstrumentsPanelOpen(true)
+  }, [song.openInstrumentId])
+
   return (
     <>
       <Transport
@@ -171,16 +177,17 @@ function App() {
         onImportMod={importMod}
         onExportWav={exportWav}
         onNewSong={newSong}
+        instrumentsPanelOpen={instrumentsPanelOpen}
+        onToggleInstruments={() => setInstrumentsPanelOpen(v => !v)}
       />
 
       <div className="flex flex-1 overflow-hidden">
         <TrackHeaders />
         <ArrangementGrid currentBeat={currentBeat} />
+        {instrumentsPanelOpen && (
+          <InstrumentPanel onClose={() => setInstrumentsPanelOpen(false)} />
+        )}
       </div>
-
-      {song.openInstrumentId && song.instruments[song.openInstrumentId] && (
-        <InstrumentEditor />
-      )}
 
       {song.openClipId && song.clips[song.openClipId] && (
         <PianoRoll />
