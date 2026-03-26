@@ -33,23 +33,30 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const tracks = useAppSelector(s => s.song.tracks)
   const totalCells = (clip?.lengthBeats ?? 0) * SUBDIV;
   const gridWidth = totalCells * PR_CELL_WIDTH;
-  const totalWidth = PR_KEY_WIDTH + gridWidth;
   const totalHeight = PR_NOTE_COUNT * PR_NOTE_HEIGHT;
 
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const pianoRef = useRef<HTMLDivElement>(null);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<DragState | null>(null);
-  const lastDurRef = useRef<number>(1); // remembers last placed/resized note duration
+  const lastDurRef = useRef<number>(1);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [lastDur, setLastDur] = useState<number>(1);
   const [cursor, setCursor] = useState<string>('crosshair');
 
   useEffect(() => {
-    if (scrollRef.current) {
-      const c4Y = (PR_NOTE_MAX - 1 - 60) * PR_NOTE_HEIGHT;
-      scrollRef.current.scrollTop = c4Y - 80;
-    }
+    const c4Y = (PR_NOTE_MAX - 1 - 60) * PR_NOTE_HEIGHT;
+    const top = c4Y - 80;
+    if (gridScrollRef.current) gridScrollRef.current.scrollTop = top;
+    if (pianoRef.current) pianoRef.current.scrollTop = top;
   }, []);
+
+  // Keep piano keys in sync with grid vertical scroll
+  const handleGridScroll = () => {
+    if (pianoRef.current && gridScrollRef.current) {
+      pianoRef.current.scrollTop = gridScrollRef.current.scrollTop;
+    }
+  };
 
   const pitchToY = (pitch: number) => (PR_NOTE_MAX - 1 - pitch) * PR_NOTE_HEIGHT;
 
@@ -59,9 +66,9 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     return { x: clientX - rect.left, y: clientY - rect.top };
   }, []);
 
-  // Find the note at a given SVG coordinate
+  // Grid SVG has no PR_KEY_WIDTH offset — x=0 is beat 0
   const findNoteAt = useCallback((svgX: number, svgY: number): Note | undefined => {
-    const cell = Math.floor((svgX - PR_KEY_WIDTH) / PR_CELL_WIDTH);
+    const cell = Math.floor(svgX / PR_CELL_WIDTH);
     const pitch = PR_NOTE_MAX - 1 - Math.floor(svgY / PR_NOTE_HEIGHT);
     return clip.notes.find(n => {
       const startCell = Math.round(n.beat * SUBDIV);
@@ -80,7 +87,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
       const svgX = e.clientX - rect.left;
 
       if (ds.kind === 'drawing') {
-        const raw = Math.floor((svgX - PR_KEY_WIDTH) / PR_CELL_WIDTH);
+        const raw = Math.floor(svgX / PR_CELL_WIDTH);
         const endCell = Math.max(ds.startCell, Math.min(totalCells - 1, raw));
         if (endCell !== ds.endCell) {
           const next = { ...ds, endCell };
@@ -141,7 +148,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     if (!coords) return;
     const note = findNoteAt(coords.x, coords.y);
     if (note) {
-      const noteEndX = PR_KEY_WIDTH + (note.beat + note.duration) * SUBDIV * PR_CELL_WIDTH;
+      const noteEndX = (note.beat + note.duration) * SUBDIV * PR_CELL_WIDTH;
       setCursor(noteEndX - coords.x <= RESIZE_HANDLE_PX ? 'ew-resize' : 'pointer');
     } else {
       setCursor('crosshair');
@@ -154,14 +161,14 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     const coords = getSvgCoords(e.clientX, e.clientY);
     if (!coords) return;
     const { x: svgX, y: svgY } = coords;
-    const cell = Math.floor((svgX - PR_KEY_WIDTH) / PR_CELL_WIDTH);
+    const cell = Math.floor(svgX / PR_CELL_WIDTH);
     const pitch = PR_NOTE_MAX - 1 - Math.floor(svgY / PR_NOTE_HEIGHT);
 
     if (cell < 0 || cell >= totalCells || pitch < PR_NOTE_MIN || pitch >= PR_NOTE_MAX) return;
 
     const note = findNoteAt(svgX, svgY);
     if (note) {
-      const noteEndX = PR_KEY_WIDTH + (note.beat + note.duration) * SUBDIV * PR_CELL_WIDTH;
+      const noteEndX = (note.beat + note.duration) * SUBDIV * PR_CELL_WIDTH;
       if (noteEndX - svgX <= RESIZE_HANDLE_PX) {
         const origDurCells = Math.max(1, Math.round(note.duration * SUBDIV));
         const ds: DragState = { kind: 'resizing', noteId: note.id, noteBeat: note.beat, origDurCells, curDurCells: origDurCells, startX: svgX };
@@ -187,7 +194,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     }
     const isRemoving = dragState?.kind === 'removing' && dragState.noteId === note.id;
     const y = pitchToY(note.pitch);
-    const x = PR_KEY_WIDTH + note.beat * SUBDIV * PR_CELL_WIDTH;
+    const x = note.beat * SUBDIV * PR_CELL_WIDTH;
     const totalW = durCells * PR_CELL_WIDTH - 2;
     const bodyW = Math.max(totalW - RESIZE_HANDLE_PX, 2);
     const handleW = Math.min(RESIZE_HANDLE_PX, totalW) - 1;
@@ -214,7 +221,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     if (!dragState || dragState.kind !== 'drawing') return null;
     const { pitch, startCell, endCell } = dragState;
     const y = pitchToY(pitch);
-    const x = PR_KEY_WIDTH + startCell * PR_CELL_WIDTH;
+    const x = startCell * PR_CELL_WIDTH;
     const w = (endCell - startCell + 1) * PR_CELL_WIDTH - 2;
     return (
       <rect
@@ -232,7 +239,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const placement = tracks.flatMap(t => t.placements).find(p => p.clipId === clipId);
   const clipRelativeBeat = placement ? currentBeat - placement.startBeat : -1;
   const showPlayhead = clipRelativeBeat >= 0 && clipRelativeBeat <= clip.lengthBeats;
-  const playheadX = PR_KEY_WIDTH + clipRelativeBeat * SUBDIV * PR_CELL_WIDTH;
+  const playheadX = clipRelativeBeat * SUBDIV * PR_CELL_WIDTH;
 
   return (
     <div className="border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0" style={{ height: 280 }}>
@@ -249,78 +256,95 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
         </button>
       </div>
 
-      {/* Scrollable grid */}
-      <div ref={scrollRef} className="flex-1 overflow-auto">
-        <svg ref={svgRef} width={totalWidth} height={totalHeight} className="block select-none">
+      {/* Body: fixed piano keys + scrollable grid */}
+      <div className="flex-1 flex overflow-hidden">
 
-          {/* Piano keys + row backgrounds */}
-          {Array.from({ length: PR_NOTE_COUNT }, (_, i) => {
-            const pitch = PR_NOTE_MAX - 1 - i;
-            const y = i * PR_NOTE_HEIGHT;
-            const black = isBlackKey(pitch);
-            const isC = pitch % 12 === 0;
+        {/* Piano keys — never scrolls horizontally; vertical scroll synced with grid */}
+        <div ref={pianoRef} style={{ width: PR_KEY_WIDTH, flexShrink: 0, overflowY: 'hidden', overflowX: 'hidden' }}>
+          <svg width={PR_KEY_WIDTH} height={totalHeight} className="block select-none">
+            {Array.from({ length: PR_NOTE_COUNT }, (_, i) => {
+              const pitch = PR_NOTE_MAX - 1 - i;
+              const y = i * PR_NOTE_HEIGHT;
+              const black = isBlackKey(pitch);
+              const isC = pitch % 12 === 0;
+              return (
+                <g key={pitch}>
+                  <rect x={0} y={y} width={PR_KEY_WIDTH} height={PR_NOTE_HEIGHT}
+                    fill={black ? '#1c1c24' : '#2a2a30'} stroke="#3f3f46" strokeWidth={0.5} />
+                  {(isC || pitch % 12 === 5) && (
+                    <text x={PR_KEY_WIDTH - 5} y={y + PR_NOTE_HEIGHT - 3}
+                      textAnchor="end" fill={isC ? '#a78bfa' : '#4b5563'}
+                      fontSize={isC ? 10 : 9} fontFamily="Inter, sans-serif">
+                      {midiToName(pitch)}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
 
-            return (
-              <g key={pitch}>
-                <rect x={0} y={y} width={PR_KEY_WIDTH} height={PR_NOTE_HEIGHT}
-                  fill={black ? '#1c1c24' : '#2a2a30'} stroke="#3f3f46" strokeWidth={0.5} />
-                {(isC || pitch % 12 === 5) && (
-                  <text x={PR_KEY_WIDTH - 5} y={y + PR_NOTE_HEIGHT - 3}
-                    textAnchor="end" fill={isC ? '#a78bfa' : '#4b5563'}
-                    fontSize={isC ? 10 : 9} fontFamily="Inter, sans-serif">
-                    {midiToName(pitch)}
-                  </text>
-                )}
-                <rect x={PR_KEY_WIDTH} y={y} width={gridWidth} height={PR_NOTE_HEIGHT}
+        {/* Grid — scrolls in both directions */}
+        <div ref={gridScrollRef} className="flex-1 overflow-auto" onScroll={handleGridScroll}>
+          <svg ref={svgRef} width={gridWidth} height={totalHeight} className="block select-none">
+
+            {/* Row backgrounds */}
+            {Array.from({ length: PR_NOTE_COUNT }, (_, i) => {
+              const pitch = PR_NOTE_MAX - 1 - i;
+              const y = i * PR_NOTE_HEIGHT;
+              const black = isBlackKey(pitch);
+              return (
+                <rect key={pitch} x={0} y={y} width={gridWidth} height={PR_NOTE_HEIGHT}
                   fill={black ? '#0f0f14' : '#141418'} />
-              </g>
-            );
-          })}
+              );
+            })}
 
-          {/* Vertical grid lines */}
-          {Array.from({ length: totalCells + 1 }, (_, i) => {
-            const x = PR_KEY_WIDTH + i * PR_CELL_WIDTH;
-            const isBeat = i % SUBDIV === 0;
-            const isBar = i % (SUBDIV * BEATS_PER_BAR) === 0;
-            return (
-              <line key={i} x1={x} y1={0} x2={x} y2={totalHeight}
-                stroke={isBar ? '#3f3f46' : isBeat ? '#2a2a30' : '#1a1a20'} strokeWidth={1} />
-            );
-          })}
+            {/* Vertical grid lines */}
+            {Array.from({ length: totalCells + 1 }, (_, i) => {
+              const x = i * PR_CELL_WIDTH;
+              const isBeat = i % SUBDIV === 0;
+              const isBar = i % (SUBDIV * BEATS_PER_BAR) === 0;
+              return (
+                <line key={i} x1={x} y1={0} x2={x} y2={totalHeight}
+                  stroke={isBar ? '#3f3f46' : isBeat ? '#2a2a30' : '#1a1a20'} strokeWidth={1} />
+              );
+            })}
 
-          {/* Horizontal pitch lines */}
-          {Array.from({ length: PR_NOTE_COUNT + 1 }, (_, i) => (
-            <line key={i} x1={PR_KEY_WIDTH} y1={i * PR_NOTE_HEIGHT}
-              x2={PR_KEY_WIDTH + gridWidth} y2={i * PR_NOTE_HEIGHT}
-              stroke="#1f1f26" strokeWidth={0.5} />
-          ))}
+            {/* Horizontal pitch lines */}
+            {Array.from({ length: PR_NOTE_COUNT + 1 }, (_, i) => (
+              <line key={i} x1={0} y1={i * PR_NOTE_HEIGHT}
+                x2={gridWidth} y2={i * PR_NOTE_HEIGHT}
+                stroke="#1f1f26" strokeWidth={0.5} />
+            ))}
 
-          {/* Notes (no pointer events — overlay handles everything) */}
-          {clip.notes.map(renderNote)}
+            {/* Notes */}
+            {clip.notes.map(renderNote)}
 
-          {/* Ghost preview while drawing */}
-          {renderGhost()}
+            {/* Ghost preview while drawing */}
+            {renderGhost()}
 
-          {/* Playhead */}
-          {showPlayhead && (
-            <line
-              x1={playheadX} y1={0} x2={playheadX} y2={totalHeight}
-              stroke="#ef4444" strokeWidth={1.5} opacity={0.85}
-              style={{ pointerEvents: 'none' }}
+            {/* Playhead */}
+            {showPlayhead && (
+              <line
+                x1={playheadX} y1={0} x2={playheadX} y2={totalHeight}
+                stroke="#ef4444" strokeWidth={1.5} opacity={0.85}
+                style={{ pointerEvents: 'none' }}
+              />
+            )}
+
+            {/* Interaction overlay — on top */}
+            <rect
+              x={0} y={0}
+              width={gridWidth} height={totalHeight}
+              fill="transparent"
+              style={{ cursor }}
+              onMouseDown={handleOverlayMouseDown}
+              onMouseMove={handleOverlayMouseMove}
+              onMouseLeave={() => { if (!dragRef.current) setCursor('crosshair'); }}
             />
-          )}
+          </svg>
+        </div>
 
-          {/* Interaction overlay — rendered last so it sits on top */}
-          <rect
-            x={PR_KEY_WIDTH} y={0}
-            width={gridWidth} height={totalHeight}
-            fill="transparent"
-            style={{ cursor }}
-            onMouseDown={handleOverlayMouseDown}
-            onMouseMove={handleOverlayMouseMove}
-            onMouseLeave={() => { if (!dragRef.current) setCursor('crosshair'); }}
-          />
-        </svg>
       </div>
     </div>
   );
