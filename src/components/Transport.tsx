@@ -17,11 +17,12 @@ interface Props {
   onImportSong: () => void;
   onImportMod: () => void;
   onExportWav: () => void;
+  onNewSong: () => void;
 }
 
 export default function Transport({
   bpm, playing, currentBeat, playbackMode, loopEnabled, loopStart, loopEnd,
-  dispatch, onPlayToggle, onExportSong, onImportSong, onImportMod, onExportWav,
+  dispatch, onPlayToggle, onExportSong, onImportSong, onImportMod, onExportWav, onNewSong,
 }: Props) {
   const maxBeats = ARRANGEMENT_BARS * BEATS_PER_BAR;
 
@@ -104,6 +105,14 @@ export default function Transport({
       )}
 
       <div className="ml-auto flex items-center gap-1.5 shrink-0">
+        {/* New song */}
+        <button
+          onClick={onNewSong}
+          className="text-xs px-2 py-1 rounded border border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors"
+          title="New song"
+        >
+          New
+        </button>
         {/* Import MOD */}
         <button
           onClick={onImportMod}

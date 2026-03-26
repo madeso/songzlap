@@ -5,6 +5,7 @@ import { createScheduler, renderOffline } from './audio'
 import type { Scheduler } from './audio'
 import { encodeWAV, downloadBlob } from './wav'
 import { parseMod } from './mod'
+import { makeEmptyState } from './store'
 import Transport from './components/Transport'
 import TrackHeaders from './components/TrackHeaders'
 import ArrangementGrid from './components/ArrangementGrid'
@@ -107,6 +108,13 @@ function App() {
     }
   }, [])
 
+  const newSong = useCallback(() => {
+    if (!confirm('Start a new song? Unsaved changes will be lost.')) return
+    localStorage.removeItem('tunes-song')
+    sampleCacheRef.current = {}
+    dispatch({ type: 'LOAD_SONG', state: makeEmptyState() })
+  }, [])
+
   const exportSong = useCallback(() => {
     downloadBlob(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }), 'song.song')
   }, [state])
@@ -167,6 +175,7 @@ function App() {
         onImportSong={importSong}
         onImportMod={importMod}
         onExportWav={exportWav}
+        onNewSong={newSong}
       />
 
       <div className="flex flex-1 overflow-hidden">

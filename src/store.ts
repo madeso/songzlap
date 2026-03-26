@@ -2,6 +2,24 @@ import type { AppState, Action, Note } from './types';
 import { uid } from './utils';
 import { TRACK_COLORS, INSTRUMENTS, CLIP_DEFAULT_BEATS, ARRANGEMENT_BARS, BEATS_PER_BAR } from './constants';
 
+export function makeEmptyState(): Omit<AppState, 'playing'> {
+  return {
+    bpm: 120,
+    openClipId: null,
+    openInstrumentId: null,
+    instruments: { ...INSTRUMENTS },
+    playbackMode: 'song',
+    selectedTrackId: null,
+    loopEnabled: false,
+    loopStart: 0,
+    loopEnd: ARRANGEMENT_BARS * BEATS_PER_BAR,
+    clips: {},
+    tracks: [
+      { id: uid(), name: 'Track 1', instrumentId: 'lead', placements: [], muted: false, color: TRACK_COLORS[0] },
+    ],
+  };
+}
+
 function buildDefaultState(): AppState {
   const clip1Id = uid();
   const clip2Id = uid();
