@@ -11,9 +11,12 @@ npm run dev       # start dev server with HMR
 npm run build     # type-check (tsc -b) then Vite production build
 npm run lint      # ESLint (TypeScript + React hooks + react-refresh rules)
 npm run preview   # preview production build locally
+npm run test      # run tests in watch mode (vitest)
+npm run test:run  # run tests once (CI mode)
+npm run coverage  # run tests with coverage report
 ```
 
-There is no test runner configured.
+Tests live in `src/**/*.test.ts`. There are no component tests — only unit tests for pure logic: `utils.test.ts`, `store/slice.test.ts`, `store.test.ts`, `wav.test.ts`. The test environment is `happy-dom` (provides `localStorage`; avoids ESM incompatibilities of jsdom v27+).
 
 ## Architecture
 
