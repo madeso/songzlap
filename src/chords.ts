@@ -130,36 +130,41 @@ export function generateChordNotes(
 
   for (const seg of segments) {
     if (seg.startBeat >= clipLengthBeats) continue;
+    if (seg.notes.length === 0) continue; // silence in melody → silence in chords
+
+    // Bound chord generation to the actual active span of melody notes in this segment
+    const activeStart = Math.min(...seg.notes.map(n => n.beat));
+    const activeEnd   = Math.min(Math.max(...seg.notes.map(n => n.beat + n.duration)), clipLengthBeats);
+
     const [pc1, pc2, pc3] = pickChord(seg, key);
     const [root, third, fifth] = voiceTriad(pc1, pc2, pc3, baseOctave);
 
     if (config.style === 'bass-only') {
-      for (let beat = seg.startBeat; beat < seg.endBeat - 0.001; beat += dur) {
-        const d = Math.min(dur, seg.endBeat - beat);
+      for (let beat = activeStart; beat < activeEnd - 0.001; beat += dur) {
+        const d = Math.min(dur, activeEnd - beat);
         result.push({ id: uid(), pitch: root, beat, duration: d, velocity: 0.65 });
       }
     } else if (config.style === 'block') {
-      for (let beat = seg.startBeat; beat < seg.endBeat - 0.001; beat += dur) {
-        const d = Math.min(dur, seg.endBeat - beat);
+      for (let beat = activeStart; beat < activeEnd - 0.001; beat += dur) {
+        const d = Math.min(dur, activeEnd - beat);
         for (const pitch of [root, third, fifth]) {
           result.push({ id: uid(), pitch, beat, duration: d, velocity: 0.65 });
         }
       }
     } else if (config.style === 'strum') {
-      for (let beat = seg.startBeat; beat < seg.endBeat - 0.001; beat += dur) {
-        const d = Math.min(dur, seg.endBeat - beat);
+      for (let beat = activeStart; beat < activeEnd - 0.001; beat += dur) {
+        const d = Math.min(dur, activeEnd - beat);
         result.push({ id: uid(), pitch: root,  beat: beat,        duration: d,        velocity: 0.70 });
         result.push({ id: uid(), pitch: third, beat: beat + 0.05, duration: d - 0.05, velocity: 0.60 });
         result.push({ id: uid(), pitch: fifth, beat: beat + 0.10, duration: d - 0.10, velocity: 0.55 });
       }
     } else {
-      // arpeggio-up or arpeggio-down
       const pitches = config.style === 'arpeggio-down'
         ? [root, fifth, third]
         : [root, third, fifth];
       let idx = 0;
-      for (let beat = seg.startBeat; beat < seg.endBeat - 0.001; beat += dur) {
-        const d = Math.min(dur, seg.endBeat - beat);
+      for (let beat = activeStart; beat < activeEnd - 0.001; beat += dur) {
+        const d = Math.min(dur, activeEnd - beat);
         result.push({ id: uid(), pitch: pitches[idx % 3], beat, duration: d, velocity: 0.65 });
         idx++;
       }
