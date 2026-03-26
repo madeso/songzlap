@@ -182,7 +182,10 @@ function App() {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <TrackHeaders />
+        <TrackHeaders
+          instrumentsPanelOpen={instrumentsPanelOpen}
+          onCloseInstrumentsPanel={() => setInstrumentsPanelOpen(false)}
+        />
         <ArrangementGrid currentBeat={currentBeat} />
         {instrumentsPanelOpen && (
           <InstrumentPanel onClose={() => setInstrumentsPanelOpen(false)} />

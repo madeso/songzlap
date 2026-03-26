@@ -3,11 +3,28 @@ import { useAppDispatch, useAppSelector } from '../store/index';
 import { addTrack, selectTrack, setInstrument, openInstrument, toggleMute, removeTrack } from '../store/slice';
 import { RULER_HEIGHT, TRACK_HEIGHT } from '../constants';
 
-export default memo(function TrackHeaders() {
+interface Props {
+  instrumentsPanelOpen: boolean;
+  onCloseInstrumentsPanel: () => void;
+}
+
+export default memo(function TrackHeaders({ instrumentsPanelOpen, onCloseInstrumentsPanel }: Props) {
   const dispatch = useAppDispatch()
   const tracks = useAppSelector(s => s.song.tracks)
   const instruments = useAppSelector(s => s.song.instruments)
   const selectedTrackId = useAppSelector(s => s.song.selectedTrackId)
+  const openInstrumentId = useAppSelector(s => s.song.openInstrumentId)
+
+  function handleEditInstrument(e: React.MouseEvent, instrumentId: string) {
+    e.stopPropagation()
+    if (instrumentsPanelOpen && openInstrumentId === instrumentId) {
+      dispatch(openInstrument(null))
+      onCloseInstrumentsPanel()
+    } else {
+      dispatch(openInstrument(instrumentId))
+      // App's useEffect will open the panel
+    }
+  }
   return (
     <div className="shrink-0 border-r border-zinc-800 bg-zinc-900 flex flex-col z-10" style={{ width: 192 }}>
       {/* Ruler spacer + add track */}
@@ -53,8 +70,12 @@ export default memo(function TrackHeaders() {
           </select>
 
           <button
-            onClick={() => dispatch(openInstrument(track.instrumentId))}
-            className="flex items-center justify-center w-5 h-5 text-zinc-700 hover:text-violet-400 transition-colors"
+            onClick={e => handleEditInstrument(e, track.instrumentId)}
+            className={`flex items-center justify-center w-5 h-5 transition-colors ${
+              instrumentsPanelOpen && openInstrumentId === track.instrumentId
+                ? 'text-violet-400'
+                : 'text-zinc-700 hover:text-violet-400'
+            }`}
             title="Edit instrument"
           >
             <span className="material-symbols-outlined" style={{ fontSize: 13 }}>tune</span>
