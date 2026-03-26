@@ -4,11 +4,8 @@ import { addInstrument, removeInstrument, openInstrument } from '../store/slice'
 import { INSTRUMENTS } from '../constants';
 import { uid } from '../utils';
 import InstrumentEditor from './InstrumentEditor';
+import WaveformIcon from './WaveformIcon';
 import type { Instrument } from '../types';
-
-const OSC_LABELS: Record<string, string> = {
-  sine: 'Sine', square: 'Sqr', sawtooth: 'Saw', triangle: 'Tri',
-};
 
 interface Props {
   onClose: () => void;
@@ -103,7 +100,10 @@ export default function InstrumentPanel({ onClose }: Props) {
                 <span className="text-xs text-zinc-300 flex-1 truncate" title={instr.name}>{instr.name}</span>
 
                 <span className="text-xs text-zinc-600 shrink-0 tabular-nums">
-                  {instr.type === 'sample' ? 'smp' : (OSC_LABELS[instr.osc] ?? instr.osc)}
+                  {instr.type === 'sample'
+                    ? <span className="text-xs text-zinc-600">smp</span>
+                    : <WaveformIcon type={instr.osc} size={20} className="text-zinc-600" />
+                  }
                 </span>
 
                 <button

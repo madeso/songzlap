@@ -3,13 +3,14 @@ import type { Instrument, SampleData } from '../types';
 import { useAppDispatch, useAppSelector } from '../store/index';
 import { updateInstrument, openInstrument } from '../store/slice';
 import type { AppDispatch } from '../store/index';
+import WaveformIcon from './WaveformIcon';
 
 type OscType = OscillatorType;
-const OSC_TYPES: { value: OscType; label: string }[] = [
-  { value: 'sine',     label: 'Sine' },
-  { value: 'square',   label: 'Sqr' },
-  { value: 'sawtooth', label: 'Saw' },
-  { value: 'triangle', label: 'Tri' },
+const OSC_TYPES: { value: OscType }[] = [
+  { value: 'sine' },
+  { value: 'square' },
+  { value: 'sawtooth' },
+  { value: 'triangle' },
 ];
 
 const fmtTime = (s: number) =>
@@ -167,17 +168,18 @@ export default function InstrumentEditor() {
         {/* Osc type buttons (osc instruments only) */}
         {instr.type === 'osc' ? (
           <div className="flex gap-0.5">
-            {OSC_TYPES.map(({ value, label }) => (
+            {OSC_TYPES.map(({ value }) => (
               <button
                 key={value}
                 onClick={() => update(instr, { osc: value }, dispatch)}
-                className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
+                title={value.charAt(0).toUpperCase() + value.slice(1)}
+                className={`flex items-center justify-center px-1.5 py-0.5 rounded transition-colors ${
                   instr.osc === value
                     ? 'bg-violet-600 text-white'
                     : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
-                {label}
+                <WaveformIcon type={value} size={22} />
               </button>
             ))}
           </div>
