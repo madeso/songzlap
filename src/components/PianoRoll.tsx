@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Note } from '../types';
 import { useAppDispatch, useAppSelector } from '../store/index';
-import { addNote, removeNote, resizeNote, openClip } from '../store/slice';
+import { addNote, removeNote, resizeNote, openClip, transposeClip } from '../store/slice';
 import {
   PR_NOTE_MIN, PR_NOTE_MAX, PR_NOTE_COUNT, PR_NOTE_HEIGHT,
   PR_KEY_WIDTH, PR_CELL_WIDTH, BEATS_PER_BAR, SUBDIV,
@@ -251,6 +251,23 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
           <span className="text-zinc-600 mr-1">len</span>{fmtLen(lastDur)}
         </span>
         <span className="text-xs text-zinc-600">Drag to draw · Drag right edge to resize · Click note to remove</span>
+        <div className="flex items-center gap-0.5 ml-2">
+          <button
+            title="Transpose down one octave"
+            onClick={() => dispatch(transposeClip({ clipId, semitones: -12 }))}
+            className="flex items-center justify-center px-1.5 h-5 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors text-xs font-bold tabular-nums"
+          >oct−</button>
+          <button
+            title="Transpose up one octave"
+            onClick={() => dispatch(transposeClip({ clipId, semitones: 12 }))}
+            className="flex items-center justify-center w-6 h-5 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors text-xs font-bold tabular-nums"
+          >oct−</button>
+          <button
+            title="Transpose up one octave"
+            onClick={() => dispatch(transposeClip({ clipId, semitones: 12 }))}
+            className="flex items-center justify-center px-1.5 h-5 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors text-xs font-bold tabular-nums"
+          >oct+</button>
+        </div>
         <button onClick={() => dispatch(openClip(null))} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-2">
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
         </button>

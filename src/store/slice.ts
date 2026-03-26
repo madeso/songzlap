@@ -2,7 +2,7 @@ import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
 import type { AppState, Instrument, Note, Clip } from '../types';
 import { uid } from '../utils';
-import { TRACK_COLORS, CLIP_DEFAULT_BEATS } from '../constants';
+import { TRACK_COLORS, CLIP_DEFAULT_BEATS, PR_NOTE_MIN, PR_NOTE_MAX } from '../constants';
 import { makeInitialState } from '../store';
 
 const songSlice = createSlice({
@@ -64,6 +64,14 @@ const songSlice = createSlice({
       const note = clip.notes.find(n => n.id === action.payload.noteId);
       if (note) note.duration = action.payload.duration;
     },
+    transposeClip(state, action: PayloadAction<{ clipId: string; semitones: number }>) {
+      const clip = state.clips[action.payload.clipId];
+      if (!clip) return;
+      clip.notes = clip.notes.map(n => ({
+        ...n,
+        pitch: Math.max(PR_NOTE_MIN, Math.min(PR_NOTE_MAX - 1, n.pitch + action.payload.semitones)),
+      }));
+    },
     setBpm(state, action: PayloadAction<number>) {
       state.bpm = action.payload;
     },
@@ -103,7 +111,7 @@ const songSlice = createSlice({
 export const {
   addTrack, removeTrack, setInstrument, toggleMute,
   addPlacement, removePlacement, openClip,
-  addNote, removeNote, resizeNote,
+  addNote, removeNote, resizeNote, transposeClip,
   setBpm, setPlaying, updateInstrument, addInstrument, removeInstrument, openInstrument,
   loadSong, setPlaybackMode, selectTrack, setLoop,
 } = songSlice.actions;
