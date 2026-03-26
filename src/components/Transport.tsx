@@ -1,17 +1,10 @@
-import type { Dispatch } from 'react';
-import type { Action } from '../types';
+import { useAppDispatch, useAppSelector } from '../store/index';
+import { setBpm, setPlaybackMode, setLoop } from '../store/slice';
 import { formatBeatTime } from '../utils';
 import { ARRANGEMENT_BARS, BEATS_PER_BAR } from '../constants';
 
 interface Props {
-  bpm: number;
-  playing: boolean;
   currentBeat: number;
-  playbackMode: 'song' | 'track';
-  loopEnabled: boolean;
-  loopStart: number;
-  loopEnd: number;
-  dispatch: Dispatch<Action>;
   onPlayToggle: () => void;
   onExportSong: () => void;
   onImportSong: () => void;
@@ -21,9 +14,15 @@ interface Props {
 }
 
 export default function Transport({
-  bpm, playing, currentBeat, playbackMode, loopEnabled, loopStart, loopEnd,
-  dispatch, onPlayToggle, onExportSong, onImportSong, onImportMod, onExportWav, onNewSong,
+  currentBeat, onPlayToggle, onExportSong, onImportSong, onImportMod, onExportWav, onNewSong,
 }: Props) {
+  const dispatch = useAppDispatch()
+  const bpm = useAppSelector(s => s.song.bpm)
+  const playing = useAppSelector(s => s.song.playing)
+  const playbackMode = useAppSelector(s => s.song.playbackMode)
+  const loopEnabled = useAppSelector(s => s.song.loopEnabled)
+  const loopStart = useAppSelector(s => s.song.loopStart)
+  const loopEnd = useAppSelector(s => s.song.loopEnd)
   const maxBeats = ARRANGEMENT_BARS * BEATS_PER_BAR;
 
   return (
@@ -51,7 +50,7 @@ export default function Transport({
         <label className="text-xs text-zinc-500 uppercase tracking-wider">BPM</label>
         <input
           type="number" value={bpm} min={40} max={240}
-          onChange={e => dispatch({ type: 'SET_BPM', bpm: Math.max(40, Math.min(240, Number(e.target.value))) })}
+          onChange={e => dispatch(setBpm(Math.max(40, Math.min(240, Number(e.target.value)))))}
           className="w-14 bg-zinc-800 text-zinc-100 text-sm rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:border-violet-500"
         />
       </div>
@@ -61,7 +60,7 @@ export default function Transport({
         {(['song', 'track'] as const).map(mode => (
           <button
             key={mode}
-            onClick={() => dispatch({ type: 'SET_PLAYBACK_MODE', mode })}
+            onClick={() => dispatch(setPlaybackMode(mode))}
             className={`text-xs px-2 py-1 capitalize transition-colors ${
               playbackMode === mode ? 'bg-violet-600 text-white' : 'text-zinc-500 hover:text-zinc-300'
             }`}
@@ -74,7 +73,7 @@ export default function Transport({
 
       {/* Loop toggle */}
       <button
-        onClick={() => dispatch({ type: 'SET_LOOP', enabled: !loopEnabled })}
+        onClick={() => dispatch(setLoop({ enabled: !loopEnabled }))}
         className={`flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors shrink-0 ${
           loopEnabled
             ? 'bg-violet-600 border-violet-500 text-white'
@@ -92,13 +91,13 @@ export default function Transport({
           <span className="text-xs text-zinc-500">from</span>
           <input
             type="number" value={Math.round(loopStart)} min={0} max={loopEnd - 1} step={BEATS_PER_BAR}
-            onChange={e => dispatch({ type: 'SET_LOOP', start: Math.max(0, Math.min(loopEnd - BEATS_PER_BAR, Number(e.target.value))) })}
+            onChange={e => dispatch(setLoop({ start: Math.max(0, Math.min(loopEnd - BEATS_PER_BAR, Number(e.target.value))) }))}
             className="w-14 bg-zinc-800 text-zinc-100 text-xs rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:border-violet-500"
           />
           <span className="text-xs text-zinc-500">to</span>
           <input
             type="number" value={Math.round(loopEnd)} min={loopStart + 1} max={maxBeats} step={BEATS_PER_BAR}
-            onChange={e => dispatch({ type: 'SET_LOOP', end: Math.max(loopStart + BEATS_PER_BAR, Math.min(maxBeats, Number(e.target.value))) })}
+            onChange={e => dispatch(setLoop({ end: Math.max(loopStart + BEATS_PER_BAR, Math.min(maxBeats, Number(e.target.value))) }))}
             className="w-14 bg-zinc-800 text-zinc-100 text-xs rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:border-violet-500"
           />
         </div>

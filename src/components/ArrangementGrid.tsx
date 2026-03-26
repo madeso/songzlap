@@ -1,24 +1,24 @@
 import { useCallback } from 'react';
-import type { Dispatch } from 'react';
-import type { Track, Clip, Action } from '../types';
+import { useAppDispatch, useAppSelector } from '../store/index';
+import { openClip, addPlacement, removePlacement } from '../store/slice';
 import {
   BEATS_PER_BAR, BAR_WIDTH, TRACK_HEIGHT, RULER_HEIGHT,
   ARRANGEMENT_BARS, CLIP_DEFAULT_BEATS, PR_NOTE_MIN, PR_NOTE_MAX,
 } from '../constants';
 
 interface Props {
-  tracks: Track[];
-  clips: Record<string, Clip>;
-  openClipId: string | null;
   currentBeat: number;
-  playing: boolean;
-  loopEnabled: boolean;
-  loopStart: number;
-  loopEnd: number;
-  dispatch: Dispatch<Action>;
 }
 
-export default function ArrangementGrid({ tracks, clips, openClipId, currentBeat, playing, loopEnabled, loopStart, loopEnd, dispatch }: Props) {
+export default function ArrangementGrid({ currentBeat }: Props) {
+  const dispatch = useAppDispatch()
+  const tracks = useAppSelector(s => s.song.tracks)
+  const clips = useAppSelector(s => s.song.clips)
+  const openClipId = useAppSelector(s => s.song.openClipId)
+  const playing = useAppSelector(s => s.song.playing)
+  const loopEnabled = useAppSelector(s => s.song.loopEnabled)
+  const loopStart = useAppSelector(s => s.song.loopStart)
+  const loopEnd = useAppSelector(s => s.song.loopEnd)
   const totalWidth = ARRANGEMENT_BARS * BAR_WIDTH;
   const totalHeight = RULER_HEIGHT + tracks.length * TRACK_HEIGHT;
 
@@ -41,7 +41,7 @@ export default function ArrangementGrid({ tracks, clips, openClipId, currentBeat
     });
 
     if (hit) {
-      dispatch({ type: 'OPEN_CLIP', clipId: hit.clipId });
+      dispatch(openClip(hit.clipId));
     } else {
       const snapBeat = Math.floor(exactBeat / BEATS_PER_BAR) * BEATS_PER_BAR;
       const wouldOverlap = track.placements.some(pl => {
@@ -51,7 +51,7 @@ export default function ArrangementGrid({ tracks, clips, openClipId, currentBeat
         return snapBeat < pl.startBeat + clip.lengthBeats && newEnd > pl.startBeat;
       });
       if (!wouldOverlap) {
-        dispatch({ type: 'ADD_PLACEMENT', trackId: track.id, startBeat: snapBeat });
+        dispatch(addPlacement({ trackId: track.id, startBeat: snapBeat }));
       }
     }
   }, [tracks, clips, dispatch]);
@@ -74,7 +74,7 @@ export default function ArrangementGrid({ tracks, clips, openClipId, currentBeat
       return clip && exactBeat >= pl.startBeat && exactBeat < pl.startBeat + clip.lengthBeats;
     });
     if (hit) {
-      dispatch({ type: 'REMOVE_PLACEMENT', trackId: track.id, placementId: hit.id });
+      dispatch(removePlacement({ trackId: track.id, placementId: hit.id }));
     }
   }, [tracks, clips, dispatch]);
 

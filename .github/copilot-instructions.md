@@ -21,18 +21,20 @@ State and data flow:
 
 - **`src/types.ts`** — all shared types: `AppState`, `Track`, `Clip`, `Note`, `Placement`, `Instrument` (with `type: 'osc' | 'sample'`), `SampleData`, and the full `Action` discriminated union.
 - **`src/constants.ts`** — 12 built-in `INSTRUMENTS` presets, layout constants (`TRACK_HEIGHT`, `BAR_WIDTH`, `RULER_HEIGHT`), piano roll constants (`PR_NOTE_MIN/MAX`, `PR_CELL_WIDTH`, `SUBDIV=4`).
-- **`src/store.ts`** — pure reducer (`reducer`), `makeInitialState()` (reads `localStorage` first, falls back to demo song), `makeEmptyState()` (blank project). No side effects.
+- **`src/store/slice.ts`** — RTK `createSlice` (`songSlice`) containing all 18 reducer cases and auto-generated action creators. Imports `makeInitialState` as the slice's `initialState`.
+- **`src/store/index.ts`** — `configureStore`, exports `RootState`, `AppDispatch`, and typed `useAppSelector`/`useAppDispatch` hooks.
+- **`src/store.ts`** — `makeInitialState()` (reads `localStorage`, falls back to demo song), `makeEmptyState()` (blank project), `buildDefaultState()`. No reducer export (moved to slice).
 - **`src/utils.ts`** — `uid()`, `midiToFreq()`, `midiToName()`, `isBlackKey()`, `beatsToSeconds()`, `formatBeatTime()`.
 - **`src/audio.ts`** — `createScheduler()` returns a look-ahead scheduler (100 ms tick interval, 250 ms lookahead). `renderOffline()` uses `OfflineAudioContext` for WAV export.
 - **`src/wav.ts`** — `encodeWAV(AudioBuffer) → Blob` (PCM 16-bit stereo), `downloadBlob()`.
 - **`src/mod.ts`** — `parseMod(ArrayBuffer)` ProTracker 4-channel MOD parser; returns a partial `AppState`.
 - **`src/App.tsx`** — root component. Owns `useReducer`, `AudioContext`, the `Scheduler`, a `sampleCacheRef` (`Record<string, AudioBuffer>`), and all imperative callbacks. Passes `dispatch` and data down as props.
-- **`src/components/`** — five components; all receive `dispatch: Dispatch<Action>` plus data props, never manage their own state except for local interaction state:
-  - **`Transport`** — `bpm`, `playing`, `currentBeat`, `playbackMode`, `loopEnabled`, `loopStart`, `loopEnd`, `dispatch`, plus six `on*` callbacks (`onPlayToggle`, `onExportSong`, `onImportSong`, `onImportMod`, `onExportWav`, `onNewSong`). File I/O callbacks are imperative and live in `App.tsx`.
-  - **`TrackHeaders`** — `tracks`, `instruments`, `selectedTrackId`, `dispatch`. Wrapped in `memo()`.
-  - **`ArrangementGrid`** — `tracks`, `clips`, `openClipId`, `currentBeat`, `playing`, `loopEnabled`, `loopStart`, `loopEnd`, `dispatch`.
-  - **`PianoRoll`** — `clip`, `clipId`, `dispatch`, `onClose`. Rendered as a bottom drawer (fixed `height: 280`).
-  - **`InstrumentEditor`** — `instrument`, `dispatch`, `onClose`. Rendered as a bottom drawer above the piano roll when open.
+- **`src/components/`** — five components; all use `useAppSelector`/`useAppDispatch` directly — no prop drilling for state or dispatch:
+  - **`Transport`** — props: `currentBeat`, `onPlayToggle`, `onExportSong`, `onImportSong`, `onImportMod`, `onExportWav`, `onNewSong`. All state (bpm, playing, loop, etc.) read via `useAppSelector`.
+  - **`TrackHeaders`** — **no props**. Wrapped in `memo()`.
+  - **`ArrangementGrid`** — **one prop**: `currentBeat` (animation state, not in Redux).
+  - **`PianoRoll`** — **no props**. Reads `openClipId` from store; renders `null` if clip is missing.
+  - **`InstrumentEditor`** — **no props**. Reads `openInstrumentId` from store; renders `null` if instrument is missing.
 
 ### Data model essentials
 
@@ -89,6 +91,8 @@ Three mutually exclusive drag modes encoded in `DragState`:
 - **`import type`** is required for type-only imports (`verbatimModuleSyntax` is on). TypeScript strict mode with `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly`.
 - Target is **ES2023**, module resolution is `bundler` — Vite handles all imports; `.tsx` extensions are allowed in import paths.
 - ESLint only lints `**/*.{ts,tsx}` — plain JS files are not linted.
-- **No Redux / no React Context** — state is a single `useReducer` in `App.tsx`; `dispatch` and derived data are passed as props. The `@reduxjs/toolkit` and `react-redux` packages in `package.json` are installed but unused.
+- **Redux (RTK + react-redux)** — state lives in a single Redux store (`src/store/index.ts`). The slice is `src/store/slice.ts`. Always use the typed `useAppSelector`/`useAppDispatch` hooks (not the raw `useSelector`/`useDispatch`). Action creators are exported from `slice.ts` — use them instead of raw action objects.
+- **`currentBeat`** is **not** in Redux — it's local `useState` in `App.tsx` driven by a `requestAnimationFrame` loop. It is passed as a prop to `Transport` and `ArrangementGrid` only.
+- **`on*` callbacks** (`onPlayToggle`, file I/O) live in `App.tsx` because they involve audio refs (`AudioContext`, `Scheduler`, `sampleCacheRef`). They are passed as props to `Transport` only.
 - **Auto-save**: state is debounced-saved to `localStorage` key `"tunes-song"` on every change (sample PCM excluded to avoid quota issues). On fresh load `makeInitialState()` restores it.
 - All SVG layout uses constants from `constants.ts` (e.g., `TRACK_HEIGHT = 48`, `BAR_WIDTH = 80`, `RULER_HEIGHT = 24`) — never hardcode these pixel values.

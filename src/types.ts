@@ -65,22 +65,3 @@ export interface AppState {
   loopEnd: number;     // beats
 }
 
-export type Action =
-  | { type: 'ADD_TRACK' }
-  | { type: 'REMOVE_TRACK'; id: string }
-  | { type: 'SET_INSTRUMENT'; trackId: string; instrumentId: string }
-  | { type: 'TOGGLE_MUTE'; trackId: string }
-  | { type: 'ADD_PLACEMENT'; trackId: string; startBeat: number }
-  | { type: 'REMOVE_PLACEMENT'; trackId: string; placementId: string }
-  | { type: 'OPEN_CLIP'; clipId: string | null }
-  | { type: 'ADD_NOTE'; clipId: string; note: Omit<Note, 'id'> }
-  | { type: 'REMOVE_NOTE'; clipId: string; noteId: string }
-  | { type: 'RESIZE_NOTE'; clipId: string; noteId: string; duration: number }
-  | { type: 'SET_BPM'; bpm: number }
-  | { type: 'SET_PLAYING'; playing: boolean }
-  | { type: 'UPDATE_INSTRUMENT'; instrument: Instrument }
-  | { type: 'OPEN_INSTRUMENT'; id: string | null }
-  | { type: 'LOAD_SONG'; state: Omit<AppState, 'playing'> }
-  | { type: 'SET_PLAYBACK_MODE'; mode: 'song' | 'track' }
-  | { type: 'SELECT_TRACK'; trackId: string | null }
-  | { type: 'SET_LOOP'; enabled?: boolean; start?: number; end?: number };

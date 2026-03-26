@@ -1,18 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Dispatch } from 'react';
-import type { Clip, Action, Note } from '../types';
+import type { Note } from '../types';
+import { useAppDispatch, useAppSelector } from '../store/index';
+import { addNote, removeNote, resizeNote, openClip } from '../store/slice';
 import {
   PR_NOTE_MIN, PR_NOTE_MAX, PR_NOTE_COUNT, PR_NOTE_HEIGHT,
   PR_KEY_WIDTH, PR_CELL_WIDTH, BEATS_PER_BAR, SUBDIV,
 } from '../constants';
 import { midiToName, isBlackKey } from '../utils';
-
-interface Props {
-  clip: Clip;
-  clipId: string;
-  dispatch: Dispatch<Action>;
-  onClose: () => void;
-}
 
 const RESIZE_HANDLE_PX = 8;
 
@@ -32,8 +26,11 @@ type DragState =
   | { kind: 'resizing'; noteId: string; noteBeat: number; origDurCells: number; curDurCells: number; startX: number }
   | { kind: 'removing'; noteId: string; startX: number };
 
-export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
-  const totalCells = clip.lengthBeats * SUBDIV;
+export default function PianoRoll() {
+  const dispatch = useAppDispatch()
+  const clipId = useAppSelector(s => s.song.openClipId)!
+  const clip = useAppSelector(s => s.song.clips[clipId])
+  const totalCells = (clip?.lengthBeats ?? 0) * SUBDIV;
   const gridWidth = totalCells * PR_CELL_WIDTH;
   const totalWidth = PR_KEY_WIDTH + gridWidth;
   const totalHeight = PR_NOTE_COUNT * PR_NOTE_HEIGHT;
@@ -116,15 +113,15 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
           : lastDurRef.current;
         lastDurRef.current = duration;
         setLastDur(duration);
-        dispatch({ type: 'ADD_NOTE', clipId, note: { pitch: ds.pitch, beat: ds.startCell / SUBDIV, duration, velocity: 0.8 } });
+        dispatch(addNote({ clipId, note: { pitch: ds.pitch, beat: ds.startCell / SUBDIV, duration, velocity: 0.8 } }));
       } else if (ds.kind === 'resizing') {
         const duration = ds.curDurCells / SUBDIV;
         lastDurRef.current = duration;
         setLastDur(duration);
-        dispatch({ type: 'RESIZE_NOTE', clipId, noteId: ds.noteId, duration });
+        dispatch(resizeNote({ clipId, noteId: ds.noteId, duration }));
       } else if (ds.kind === 'removing') {
         if (Math.abs(svgX - ds.startX) < 4) {
-          dispatch({ type: 'REMOVE_NOTE', clipId, noteId: ds.noteId });
+          dispatch(removeNote({ clipId, noteId: ds.noteId }));
         }
       }
     };
@@ -228,6 +225,8 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
     );
   };
 
+  if (!clip) return null;
+
   return (
     <div className="border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0" style={{ height: 280 }}>
       {/* Header */}
@@ -238,7 +237,7 @@ export default function PianoRoll({ clip, clipId, dispatch, onClose }: Props) {
           <span className="text-zinc-600 mr-1">len</span>{fmtLen(lastDur)}
         </span>
         <span className="text-xs text-zinc-600">Drag to draw · Drag right edge to resize · Click note to remove</span>
-        <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-2">
+        <button onClick={() => dispatch(openClip(null))} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-2">
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
         </button>
       </div>

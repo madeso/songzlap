@@ -1,6 +1,9 @@
-import { useReducer, useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import './App.css'
-import { reducer, makeInitialState } from './store'
+import { useAppDispatch, useAppSelector } from './store/index'
+import {
+  setPlaying, loadSong,
+} from './store/slice'
 import { createScheduler, renderOffline } from './audio'
 import type { Scheduler } from './audio'
 import { encodeWAV, downloadBlob } from './wav'
@@ -14,7 +17,8 @@ import InstrumentEditor from './components/InstrumentEditor'
 import type { AppState, Instrument, SampleData } from './types'
 
 function App() {
-  const [state, dispatch] = useReducer(reducer, undefined, makeInitialState)
+  const dispatch = useAppDispatch()
+  const song = useAppSelector(s => s.song)
   const [currentBeat, setCurrentBeat] = useState(0)
 
   const audioCtxRef = useRef<AudioContext | null>(null)
@@ -41,27 +45,27 @@ function App() {
     if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
     schedulerRef.current?.stop()
     schedulerRef.current = null
-    dispatch({ type: 'SET_PLAYING', playing: false })
-  }, [])
+    dispatch(setPlaying(false))
+  }, [dispatch])
 
   const onPlayToggle = useCallback(async () => {
-    if (state.playing) {
+    if (song.playing) {
       stopPlayback()
-      setCurrentBeat(state.loopStart)
+      setCurrentBeat(song.loopStart)
     } else {
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext()
       const ctx = audioCtxRef.current
       if (ctx.state === 'suspended') await ctx.resume()
-      await ensureSampleCache(state.instruments)
+      await ensureSampleCache(song.instruments)
 
-      const scheduler = createScheduler(ctx, state.tracks, state.clips, state.instruments, state.bpm, {
-        loopEnabled: state.loopEnabled,
-        loopStart: state.loopStart,
-        loopEnd: state.loopEnd,
-        playbackMode: state.playbackMode,
-        selectedTrackId: state.selectedTrackId,
+      const scheduler = createScheduler(ctx, song.tracks, song.clips, song.instruments, song.bpm, {
+        loopEnabled: song.loopEnabled,
+        loopStart: song.loopStart,
+        loopEnd: song.loopEnd,
+        playbackMode: song.playbackMode,
+        selectedTrackId: song.selectedTrackId,
         sampleCache: sampleCacheRef.current,
-        onStop: () => { stopPlayback(); setCurrentBeat(state.loopStart) },
+        onStop: () => { stopPlayback(); setCurrentBeat(song.loopStart) },
       })
       schedulerRef.current = scheduler
       scheduler.tick()
@@ -71,9 +75,9 @@ function App() {
         rafRef.current = requestAnimationFrame(tick)
       }
       rafRef.current = requestAnimationFrame(tick)
-      dispatch({ type: 'SET_PLAYING', playing: true })
+      dispatch(setPlaying(true))
     }
-  }, [state, stopPlayback, ensureSampleCache])
+  }, [song, stopPlayback, ensureSampleCache, dispatch])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -89,8 +93,8 @@ function App() {
     const id = setTimeout(() => {
       try {
         const toSave: AppState = {
-          ...state,
-          instruments: Object.fromEntries(Object.entries(state.instruments).map(([k, instr]) =>
+          ...song,
+          instruments: Object.fromEntries(Object.entries(song.instruments).map(([k, instr]) =>
             [k, instr.type === 'sample' ? { ...instr, sample: undefined } : instr]
           )),
         }
@@ -98,7 +102,7 @@ function App() {
       } catch { /* quota */ }
     }, 800)
     return () => clearTimeout(id)
-  }, [state])
+  }, [song])
 
   useEffect(() => {
     return () => {
@@ -112,12 +116,12 @@ function App() {
     if (!confirm('Start a new song? Unsaved changes will be lost.')) return
     localStorage.removeItem('tunes-song')
     sampleCacheRef.current = {}
-    dispatch({ type: 'LOAD_SONG', state: makeEmptyState() })
-  }, [])
+    dispatch(loadSong(makeEmptyState()))
+  }, [dispatch])
 
   const exportSong = useCallback(() => {
-    downloadBlob(new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' }), 'song.song')
-  }, [state])
+    downloadBlob(new Blob([JSON.stringify(song, null, 2)], { type: 'application/json' }), 'song.song')
+  }, [song])
 
   const importSong = useCallback(() => {
     const input = document.createElement('input')
@@ -129,11 +133,11 @@ function App() {
         const parsed = JSON.parse(text) as AppState
         if (!parsed.tracks || !parsed.clips) throw new Error('invalid')
         sampleCacheRef.current = {}
-        dispatch({ type: 'LOAD_SONG', state: { ...parsed, playing: false } as Omit<AppState, 'playing'> })
+        dispatch(loadSong(parsed as Omit<AppState, 'playing'>))
       } catch { alert('Could not load song file.') }
     }
     input.click()
-  }, [])
+  }, [dispatch])
 
   const importMod = useCallback(() => {
     const input = document.createElement('input')
@@ -144,32 +148,23 @@ function App() {
       try {
         const parsed = parseMod(buf)
         sampleCacheRef.current = {}
-        dispatch({ type: 'LOAD_SONG', state: parsed as Omit<AppState, 'playing'> })
+        dispatch(loadSong(parsed as Omit<AppState, 'playing'>))
       } catch (e) { alert(`Could not parse MOD file: ${e}`) }
     }
     input.click()
-  }, [])
+  }, [dispatch])
 
   const exportWav = useCallback(async () => {
     if (!audioCtxRef.current) audioCtxRef.current = new AudioContext()
-    await ensureSampleCache(state.instruments)
-    const buffer = await renderOffline(state.tracks, state.clips, state.instruments, sampleCacheRef.current, state.bpm, state.loopStart, state.loopEnd)
+    await ensureSampleCache(song.instruments)
+    const buffer = await renderOffline(song.tracks, song.clips, song.instruments, sampleCacheRef.current, song.bpm, song.loopStart, song.loopEnd)
     downloadBlob(encodeWAV(buffer), 'song.wav')
-  }, [state, ensureSampleCache])
-
-  const openClip = state.openClipId ? state.clips[state.openClipId] : null
+  }, [song, ensureSampleCache])
 
   return (
     <>
       <Transport
-        bpm={state.bpm}
-        playing={state.playing}
         currentBeat={currentBeat}
-        playbackMode={state.playbackMode}
-        loopEnabled={state.loopEnabled}
-        loopStart={state.loopStart}
-        loopEnd={state.loopEnd}
-        dispatch={dispatch}
         onPlayToggle={onPlayToggle}
         onExportSong={exportSong}
         onImportSong={importSong}
@@ -179,21 +174,16 @@ function App() {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <TrackHeaders tracks={state.tracks} instruments={state.instruments} selectedTrackId={state.selectedTrackId} dispatch={dispatch} />
-        <ArrangementGrid
-          tracks={state.tracks} clips={state.clips} openClipId={state.openClipId}
-          currentBeat={currentBeat} playing={state.playing}
-          loopEnabled={state.loopEnabled} loopStart={state.loopStart} loopEnd={state.loopEnd}
-          dispatch={dispatch}
-        />
+        <TrackHeaders />
+        <ArrangementGrid currentBeat={currentBeat} />
       </div>
 
-      {state.openInstrumentId && state.instruments[state.openInstrumentId] && (
-        <InstrumentEditor instrument={state.instruments[state.openInstrumentId]} dispatch={dispatch} onClose={() => dispatch({ type: 'OPEN_INSTRUMENT', id: null })} />
+      {song.openInstrumentId && song.instruments[song.openInstrumentId] && (
+        <InstrumentEditor />
       )}
 
-      {openClip && (
-        <PianoRoll clip={openClip} clipId={state.openClipId!} dispatch={dispatch} onClose={() => dispatch({ type: 'OPEN_CLIP', clipId: null })} />
+      {song.openClipId && song.clips[song.openClipId] && (
+        <PianoRoll />
       )}
     </>
   )

@@ -1,12 +1,8 @@
 import { useMemo } from 'react';
-import type { Dispatch } from 'react';
-import type { Instrument, Action, SampleData } from '../types';
-
-interface Props {
-  instrument: Instrument;
-  dispatch: Dispatch<Action>;
-  onClose: () => void;
-}
+import type { Instrument, SampleData } from '../types';
+import { useAppDispatch, useAppSelector } from '../store/index';
+import { updateInstrument, openInstrument } from '../store/slice';
+import type { AppDispatch } from '../store/index';
 
 type OscType = OscillatorType;
 const OSC_TYPES: { value: OscType; label: string }[] = [
@@ -19,8 +15,8 @@ const OSC_TYPES: { value: OscType; label: string }[] = [
 const fmtTime = (s: number) =>
   s < 1 ? `${Math.round(s * 1000)}ms` : `${s.toFixed(2)}s`;
 
-function update(instr: Instrument, patch: Partial<Instrument>, dispatch: Dispatch<Action>) {
-  dispatch({ type: 'UPDATE_INSTRUMENT', instrument: { ...instr, ...patch } });
+function update(instr: Instrument, patch: Partial<Instrument>, dispatch: AppDispatch) {
+  dispatch(updateInstrument({ ...instr, ...patch }));
 }
 
 interface SliderProps {
@@ -143,7 +139,11 @@ function Waveform({ sample }: { sample: SampleData }) {
   );
 }
 
-export default function InstrumentEditor({ instrument: instr, dispatch, onClose }: Props) {
+export default function InstrumentEditor() {
+  const dispatch = useAppDispatch()
+  const instrId = useAppSelector(s => s.song.openInstrumentId)!
+  const instr = useAppSelector(s => s.song.instruments[instrId])
+  if (!instr) return null;
   return (
     <div className="border-t border-zinc-800 bg-zinc-950 shrink-0">
       {/* Header row */}
@@ -188,7 +188,7 @@ export default function InstrumentEditor({ instrument: instr, dispatch, onClose 
         <span className="ml-auto text-xs text-zinc-600">Instrument</span>
 
         <button
-          onClick={onClose}
+          onClick={() => dispatch(openInstrument(null))}
           className="text-zinc-600 hover:text-zinc-300 transition-colors"
         >
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
