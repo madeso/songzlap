@@ -1,10 +1,11 @@
 /** Inline SVG waveform icons for the four oscillator types. */
 
+// All paths use a 16×16 viewBox; midline at y=8, peaks at y=2/y=14
 const PATHS: Record<string, string> = {
-  sine:     'M 0 5 C 2 5 4 1 6 1 C 8 1 10 5 12 5 C 14 5 16 9 18 9 C 20 9 22 5 24 5',
-  square:   'M 0 2 L 11 2 L 11 8 L 23 8 L 23 2',
-  sawtooth: 'M 0 8 L 12 2 L 12 8 L 24 2',
-  triangle: 'M 0 8 L 6 2 L 12 8 L 18 2 L 24 8',
+  sine:     'M 0 8 C 2 2 6 2 8 8 C 10 14 14 14 16 8',
+  square:   'M 0 3 L 7 3 L 7 13 L 15 13 L 15 3',
+  sawtooth: 'M 0 14 L 8 2 L 8 14 L 16 2',
+  triangle: 'M 0 8 L 4 2 L 12 14 L 16 8',
 };
 
 interface Props {
@@ -13,13 +14,13 @@ interface Props {
   className?: string;
 }
 
-export default function WaveformIcon({ type, size = 24, className }: Props) {
+export default function WaveformIcon({ type, size = 16, className }: Props) {
   const path = PATHS[type] ?? PATHS['sine'];
   return (
     <svg
-      viewBox="0 0 24 10"
+      viewBox="0 0 16 16"
       width={size}
-      height={Math.round(size * 10 / 24)}
+      height={size}
       fill="none"
       stroke="currentColor"
       strokeWidth={1.5}

@@ -179,7 +179,7 @@ export default function InstrumentEditor() {
                     : 'text-zinc-500 hover:text-zinc-300'
                 }`}
               >
-                <WaveformIcon type={value} size={22} />
+                <WaveformIcon type={value} size={16} />
               </button>
             ))}
           </div>

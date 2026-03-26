@@ -102,7 +102,7 @@ export default function InstrumentPanel({ onClose }: Props) {
                 <span className="text-xs text-zinc-600 shrink-0 tabular-nums">
                   {instr.type === 'sample'
                     ? <span className="text-xs text-zinc-600">smp</span>
-                    : <WaveformIcon type={instr.osc} size={20} className="text-zinc-600" />
+                    : <WaveformIcon type={instr.osc} size={16} className="text-zinc-600" />
                   }
                 </span>
 
