@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Note, ChordConfig } from '../types';
 import { useAppDispatch, useAppSelector } from '../store/index';
-import { addNote, removeNote, resizeNote, openClip, transposeClip, setChordConfig } from '../store/slice';
+import { addNote, removeNote, resizeNote, updateNotes, openClip, transposeClip, setChordConfig } from '../store/slice';
 import {
   PR_NOTE_HEIGHT,
   PR_KEY_WIDTH, PR_CELL_WIDTH, BEATS_PER_BAR, SUBDIV,
@@ -30,8 +30,9 @@ function fmtLen(beats: number): string {
 
 type DragState =
   | { kind: 'drawing'; pitch: number; startCell: number; endCell: number }
-  | { kind: 'resizing'; noteId: string; noteBeat: number; origDurCells: number; curDurCells: number; startX: number }
-  | { kind: 'removing'; noteId: string; startX: number };
+  | { kind: 'resize-right'; noteId: string; origDurCells: number; curDurCells: number; startX: number }
+  | { kind: 'resize-left'; noteId: string; origBeat: number; origDuration: number; startX: number; curBeat: number; curDuration: number }
+  | { kind: 'moving'; noteId: string; noteIds: string[]; origBeats: Record<string, number>; origPitches: Record<string, number>; startX: number; startY: number; dx: number; dy: number; hasMoved: boolean; wasSelected: boolean };
 
 export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const dispatch = useAppDispatch()
@@ -58,6 +59,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [lastDur, setLastDur] = useState<number>(1);
   const [cursor, setCursor] = useState<string>('crosshair');
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
 
   // Refs so callbacks always see the latest display range without stale closures
   const displayMaxRef = useRef(displayMax);
@@ -66,6 +68,10 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     displayMaxRef.current = displayMax;
     displayMinRef.current = displayMin;
   });
+
+  // Keep selection in sync: remove IDs that no longer exist in the clip
+  const selectedRef = useRef(selectedNoteIds);
+  useEffect(() => { selectedRef.current = selectedNoteIds; });
 
   // Scroll to center of the display range on first mount only
   const initialScrollDone = useRef(false);
@@ -85,6 +91,23 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     }
   };
 
+  // Delete selected notes when Delete/Backspace is pressed
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const sel = selectedRef.current;
+      if (sel.size === 0) return;
+      // Don't intercept when typing in an input
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      sel.forEach(noteId => dispatch(removeNote({ clipId, noteId })));
+      setSelectedNoteIds(new Set());
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [clipId, dispatch]);
+
   const pitchToY = (pitch: number) => (displayMax - 1 - pitch) * PR_NOTE_HEIGHT;
 
   const getSvgCoords = useCallback((clientX: number, clientY: number) => {
@@ -93,7 +116,6 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     return { x: clientX - rect.left, y: clientY - rect.top };
   }, []);
 
-  // Grid SVG has no PR_KEY_WIDTH offset — x=0 is beat 0
   const findNoteAt = useCallback((svgX: number, svgY: number): Note | undefined => {
     const cell = Math.floor(svgX / PR_CELL_WIDTH);
     const pitch = displayMaxRef.current - 1 - Math.floor(svgY / PR_NOTE_HEIGHT);
@@ -104,6 +126,17 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     });
   }, [clip.notes]);
 
+  // Classify where in a note the click landed
+  type NoteZone = 'left-handle' | 'right-handle' | 'body';
+  const getNoteZone = useCallback((note: Note, svgX: number): NoteZone => {
+    const noteStartX = note.beat * SUBDIV * PR_CELL_WIDTH;
+    const noteEndX = (note.beat + note.duration) * SUBDIV * PR_CELL_WIDTH;
+    const noteWidth = noteEndX - noteStartX;
+    if (svgX - noteStartX <= RESIZE_HANDLE_PX && noteWidth > RESIZE_HANDLE_PX * 2) return 'left-handle';
+    if (noteEndX - svgX <= RESIZE_HANDLE_PX) return 'right-handle';
+    return 'body';
+  }, []);
+
   // Global drag handlers
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -112,6 +145,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
       const rect = svgRef.current?.getBoundingClientRect();
       if (!rect) return;
       const svgX = e.clientX - rect.left;
+      const svgY = e.clientY - rect.top;
 
       if (ds.kind === 'drawing') {
         const raw = Math.floor(svgX / PR_CELL_WIDTH);
@@ -121,7 +155,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
           dragRef.current = next;
           setDragState(next);
         }
-      } else if (ds.kind === 'resizing') {
+      } else if (ds.kind === 'resize-right') {
         const deltaCells = Math.round((svgX - ds.startX) / PR_CELL_WIDTH);
         const newCells = Math.max(1, ds.origDurCells + deltaCells);
         if (newCells !== ds.curDurCells) {
@@ -129,34 +163,64 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
           dragRef.current = next;
           setDragState(next);
         }
+      } else if (ds.kind === 'resize-left') {
+        const deltaCells = Math.round((svgX - ds.startX) / PR_CELL_WIDTH);
+        const rightEdge = ds.origBeat + ds.origDuration;
+        const newBeat = Math.max(0, Math.min(rightEdge - 1 / SUBDIV, ds.origBeat + deltaCells / SUBDIV));
+        const newDuration = rightEdge - newBeat;
+        if (Math.abs(newBeat - ds.curBeat) > 0.0001) {
+          const next = { ...ds, curBeat: newBeat, curDuration: newDuration };
+          dragRef.current = next;
+          setDragState(next);
+        }
+      } else if (ds.kind === 'moving') {
+        const dx = Math.round((svgX - ds.startX) / PR_CELL_WIDTH);
+        const dy = Math.round((svgY - ds.startY) / PR_NOTE_HEIGHT);
+        if (dx !== ds.dx || dy !== ds.dy) {
+          const hasMoved = ds.hasMoved || dx !== 0 || dy !== 0;
+          const next = { ...ds, dx, dy, hasMoved };
+          dragRef.current = next;
+          setDragState(next);
+          if (hasMoved) setCursor('grabbing');
+        }
       }
     };
 
-    const onUp = (e: MouseEvent) => {
+    const onUp = (_e: MouseEvent) => {
       const ds = dragRef.current;
       if (!ds) return;
       dragRef.current = null;
       setDragState(null);
       setCursor('crosshair');
-      const rect = svgRef.current?.getBoundingClientRect();
-      const svgX = rect ? e.clientX - rect.left : 0;
 
       if (ds.kind === 'drawing') {
-        // Click with no drag → use last duration; drag → spanned duration
         const duration = ds.endCell > ds.startCell
           ? (ds.endCell - ds.startCell + 1) / SUBDIV
           : lastDurRef.current;
         lastDurRef.current = duration;
         setLastDur(duration);
         dispatch(addNote({ clipId, note: { pitch: ds.pitch, beat: ds.startCell / SUBDIV, duration, velocity: 0.8 } }));
-      } else if (ds.kind === 'resizing') {
+      } else if (ds.kind === 'resize-right') {
         const duration = ds.curDurCells / SUBDIV;
         lastDurRef.current = duration;
         setLastDur(duration);
         dispatch(resizeNote({ clipId, noteId: ds.noteId, duration }));
-      } else if (ds.kind === 'removing') {
-        if (Math.abs(svgX - ds.startX) < 4) {
-          dispatch(removeNote({ clipId, noteId: ds.noteId }));
+      } else if (ds.kind === 'resize-left') {
+        dispatch(updateNotes({ clipId, updates: [{ noteId: ds.noteId, beat: ds.curBeat, duration: ds.curDuration }] }));
+      } else if (ds.kind === 'moving') {
+        if (ds.hasMoved) {
+          // Commit move for all notes in the move set
+          const updates = ds.noteIds.map(nid => {
+            const origBeat = ds.origBeats[nid];
+            const origPitch = ds.origPitches[nid];
+            const newBeat = Math.max(0, origBeat + ds.dx / SUBDIV);
+            const newPitch = Math.max(0, Math.min(127, origPitch - ds.dy));
+            return { noteId: nid, beat: newBeat, pitch: newPitch };
+          });
+          dispatch(updateNotes({ clipId, updates }));
+        } else {
+          // Plain click: update selection
+          setSelectedNoteIds(new Set([ds.noteId]));
         }
       }
     };
@@ -175,12 +239,14 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     if (!coords) return;
     const note = findNoteAt(coords.x, coords.y);
     if (note) {
-      const noteEndX = (note.beat + note.duration) * SUBDIV * PR_CELL_WIDTH;
-      setCursor(noteEndX - coords.x <= RESIZE_HANDLE_PX ? 'ew-resize' : 'pointer');
+      const zone = getNoteZone(note, coords.x);
+      if (zone === 'left-handle') setCursor('w-resize');
+      else if (zone === 'right-handle') setCursor('e-resize');
+      else setCursor('grab');
     } else {
       setCursor('crosshair');
     }
-  }, [getSvgCoords, findNoteAt]);
+  }, [getSvgCoords, findNoteAt, getNoteZone]);
 
   const handleOverlayMouseDown = useCallback((e: React.MouseEvent<SVGRectElement>) => {
     if (e.button !== 0) return;
@@ -195,47 +261,104 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
 
     const note = findNoteAt(svgX, svgY);
     if (note) {
-      const noteEndX = (note.beat + note.duration) * SUBDIV * PR_CELL_WIDTH;
-      if (noteEndX - svgX <= RESIZE_HANDLE_PX) {
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl+click: delete immediately
+        dispatch(removeNote({ clipId, noteId: note.id }));
+        setSelectedNoteIds(prev => { const next = new Set(prev); next.delete(note.id); return next; });
+        return;
+      }
+
+      if (e.shiftKey) {
+        // Shift+click: toggle in selection, no drag
+        setSelectedNoteIds(prev => {
+          const next = new Set(prev);
+          if (next.has(note.id)) next.delete(note.id);
+          else next.add(note.id);
+          return next;
+        });
+        return;
+      }
+
+      const zone = getNoteZone(note, svgX);
+      if (zone === 'left-handle') {
+        const ds: DragState = { kind: 'resize-left', noteId: note.id, origBeat: note.beat, origDuration: note.duration, startX: svgX, curBeat: note.beat, curDuration: note.duration };
+        dragRef.current = ds;
+        setDragState(ds);
+        setCursor('w-resize');
+      } else if (zone === 'right-handle') {
         const origDurCells = Math.max(1, Math.round(note.duration * SUBDIV));
-        const ds: DragState = { kind: 'resizing', noteId: note.id, noteBeat: note.beat, origDurCells, curDurCells: origDurCells, startX: svgX };
+        const ds: DragState = { kind: 'resize-right', noteId: note.id, origDurCells, curDurCells: origDurCells, startX: svgX };
         dragRef.current = ds;
         setDragState(ds);
-        setCursor('ew-resize');
+        setCursor('e-resize');
       } else {
-        const ds: DragState = { kind: 'removing', noteId: note.id, startX: svgX };
+        // Body: start a potential move drag
+        const wasSelected = selectedRef.current.has(note.id);
+        // Determine which notes will move: the selection if note is in it, else just this note
+        const moveIds = wasSelected ? Array.from(selectedRef.current) : [note.id];
+        const origBeats: Record<string, number> = {};
+        const origPitches: Record<string, number> = {};
+        for (const nid of moveIds) {
+          const n = clip.notes.find(nn => nn.id === nid);
+          if (n) { origBeats[nid] = n.beat; origPitches[nid] = n.pitch; }
+        }
+        const ds: DragState = { kind: 'moving', noteId: note.id, noteIds: moveIds, origBeats, origPitches, startX: svgX, startY: svgY, dx: 0, dy: 0, hasMoved: false, wasSelected };
         dragRef.current = ds;
         setDragState(ds);
+        setCursor('grab');
       }
     } else {
+      // Empty area: draw new note, clear selection
+      setSelectedNoteIds(new Set());
       const ds: DragState = { kind: 'drawing', pitch, startCell: cell, endCell: cell };
       dragRef.current = ds;
       setDragState(ds);
     }
-  }, [getSvgCoords, findNoteAt, totalCells]);
+  }, [getSvgCoords, findNoteAt, getNoteZone, totalCells, clipId, dispatch, clip.notes]);
 
   const renderNote = (note: Note) => {
     let durCells = Math.max(1, Math.round(note.duration * SUBDIV));
-    if (dragState?.kind === 'resizing' && dragState.noteId === note.id) {
+    let noteX = note.beat * SUBDIV * PR_CELL_WIDTH;
+
+    if (dragState?.kind === 'resize-right' && dragState.noteId === note.id) {
       durCells = dragState.curDurCells;
+    } else if (dragState?.kind === 'resize-left' && dragState.noteId === note.id) {
+      noteX = dragState.curBeat * SUBDIV * PR_CELL_WIDTH;
+      durCells = Math.max(1, Math.round(dragState.curDuration * SUBDIV));
     }
-    const isRemoving = dragState?.kind === 'removing' && dragState.noteId === note.id;
-    const isOutOfRange = note.pitch < 0 || note.pitch > 127;
+
+    let renderPitch = note.pitch;
+    let renderBeat = note.beat;
+    if (dragState?.kind === 'moving' && dragState.noteIds.includes(note.id)) {
+      renderBeat = Math.max(0, dragState.origBeats[note.id] + dragState.dx / SUBDIV);
+      renderPitch = Math.max(0, Math.min(127, dragState.origPitches[note.id] - dragState.dy));
+      noteX = renderBeat * SUBDIV * PR_CELL_WIDTH;
+    }
+
+    const isOutOfRange = renderPitch < displayMin || renderPitch >= displayMax;
+    const isSelected = selectedNoteIds.has(note.id) && !isChord;
     let bodyColor: string;
     let handleColor: string;
     if (isChord) {
-      bodyColor = '#71717a'; // zinc-500 — dimmed
-      handleColor = '#a1a1aa'; // zinc-400
+      bodyColor = '#71717a';
+      handleColor = '#a1a1aa';
     } else if (isOutOfRange) {
-      bodyColor = isRemoving ? '#c2410c' : '#f97316';
+      bodyColor = '#f97316';
       handleColor = '#fb923c';
+    } else if (isSelected) {
+      bodyColor = '#a78bfa';  // brighter violet when selected
+      handleColor = '#c4b5fd';
     } else {
-      bodyColor = isRemoving ? '#6d28d9' : '#8b5cf6';
+      bodyColor = '#8b5cf6';
       handleColor = '#a78bfa';
     }
     const opacity = isChord ? 0.55 : 1;
-    const y = pitchToY(note.pitch);
-    const x = note.beat * SUBDIV * PR_CELL_WIDTH;
+
+    // Clamp rendering to visible range
+    const renderY = isOutOfRange
+      ? Math.max(0, Math.min(totalHeight - PR_NOTE_HEIGHT, pitchToY(Math.max(displayMin, Math.min(displayMax - 1, renderPitch)))))
+      : pitchToY(renderPitch);
+
     const totalW = durCells * PR_CELL_WIDTH - 2;
     const bodyW = Math.max(totalW - (isChord ? 0 : RESIZE_HANDLE_PX), 2);
     const handleW = isChord ? 0 : Math.min(RESIZE_HANDLE_PX, totalW) - 1;
@@ -243,13 +366,21 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     return (
       <g key={note.id} style={{ pointerEvents: 'none' }} opacity={opacity}>
         <rect
-          x={x + 1} y={y + 2}
+          x={noteX + 1} y={renderY + 2}
           width={bodyW} height={PR_NOTE_HEIGHT - 3}
           fill={bodyColor}
           rx={2}
         />
+        {isSelected && (
+          <rect
+            x={noteX + 1} y={renderY + 2}
+            width={totalW} height={PR_NOTE_HEIGHT - 3}
+            fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth={1.5}
+            rx={2}
+          />
+        )}
         <rect
-          x={x + 1 + bodyW} y={y + 2}
+          x={noteX + 1 + bodyW} y={renderY + 2}
           width={handleW} height={PR_NOTE_HEIGHT - 3}
           fill={handleColor}
           rx={2}
@@ -330,7 +461,10 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
             <span className="text-xs text-zinc-500 tabular-nums" title="Current note length">
               <span className="text-zinc-600 mr-1">len</span>{fmtLen(lastDur)}
             </span>
-            <span className="text-xs text-zinc-600">Drag to draw · Drag right edge to resize · Click note to remove</span>
+            {selectedNoteIds.size > 0 && (
+              <span className="text-xs text-violet-400 tabular-nums">{selectedNoteIds.size} selected</span>
+            )}
+            <span className="text-xs text-zinc-600">Draw · Drag to move · ⇥ edges to resize · Ctrl+click or Del to delete</span>
             <div className="flex items-center gap-0.5 ml-2">
               <button
                 title="Transpose down one octave"
@@ -445,4 +579,3 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     </div>
   );
 }
-

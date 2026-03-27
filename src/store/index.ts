@@ -1,11 +1,11 @@
 import { configureStore, createListenerMiddleware } from '@reduxjs/toolkit';
 import { useDispatch, useSelector } from 'react-redux';
-import songReducer, { addNote, removeNote, resizeNote, transposeClip, addPlacement, removePlacement, regenerateChordTrack } from './slice';
+import songReducer, { addNote, removeNote, resizeNote, updateNotes, transposeClip, addPlacement, removePlacement, regenerateChordTrack } from './slice';
 
 const listenerMiddleware = createListenerMiddleware();
 
 // Re-generate chord tracks whenever their source melody changes
-const melodyChangingActions = [addNote, removeNote, resizeNote, transposeClip, addPlacement, removePlacement];
+const melodyChangingActions = [addNote, removeNote, resizeNote, updateNotes, transposeClip, addPlacement, removePlacement];
 for (const actionCreator of melodyChangingActions) {
   listenerMiddleware.startListening({
     actionCreator,

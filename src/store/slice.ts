@@ -105,6 +105,20 @@ const songSlice = createSlice({
       const note = clip.notes.find(n => n.id === action.payload.noteId);
       if (note) note.duration = action.payload.duration;
     },
+    updateNotes(state, action: PayloadAction<{
+      clipId: string;
+      updates: Array<{ noteId: string; beat?: number; pitch?: number; duration?: number }>;
+    }>) {
+      const clip = state.clips[action.payload.clipId];
+      if (!clip) return;
+      for (const upd of action.payload.updates) {
+        const note = clip.notes.find(n => n.id === upd.noteId);
+        if (!note) continue;
+        if (upd.beat !== undefined) note.beat = upd.beat;
+        if (upd.pitch !== undefined) note.pitch = upd.pitch;
+        if (upd.duration !== undefined) note.duration = upd.duration;
+      }
+    },
     transposeClip(state, action: PayloadAction<{ clipId: string; semitones: number }>) {
       const clip = state.clips[action.payload.clipId];
       if (!clip) return;
@@ -197,7 +211,7 @@ const songSlice = createSlice({
 export const {
   addTrack, removeTrack, setInstrument, toggleMute,
   addPlacement, removePlacement, openClip,
-  addNote, removeNote, resizeNote, transposeClip,
+  addNote, removeNote, resizeNote, updateNotes, transposeClip,
   setBpm, setPlaying, updateInstrument, addInstrument, removeInstrument, openInstrument,
   loadSong, setPlaybackMode, selectTrack, setLoop, addChordTrack, setChordConfig, regenerateChordTrack,
 } = songSlice.actions;
