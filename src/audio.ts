@@ -19,6 +19,110 @@ export interface Scheduler {
 
 const LOOKAHEAD_SEC = 0.25;
 
+function scheduleNote(
+  ctx: BaseAudioContext,
+  destination: AudioNode,
+  note: Note,
+  instr: Instrument,
+  audioStartTime: number,
+  bpm: number,
+  sampleCache: Record<string, AudioBuffer>,
+) {
+  const secsPerBeat = 60 / bpm;
+
+  // Apply startDelayBeats before anything else
+  const delayBeats = note.automation?.startDelayBeats ?? 0;
+  const startTime = audioStartTime + delayBeats * secsPerBeat;
+
+  const durSecs = Math.max(beatsToSeconds(note.duration, bpm), 0.05);
+  const { attack: a, decay: d, sustain: s, release: r } = instr;
+  const v = note.velocity;
+  const releaseStart = Math.max(startTime + durSecs - r, startTime + a + d);
+
+  // --- Gain envelope ---
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(v, startTime + a);
+  gain.gain.linearRampToValueAtTime(s * v, startTime + a + d);
+  gain.gain.setValueAtTime(s * v, releaseStart);
+  gain.gain.linearRampToValueAtTime(0, releaseStart + r);
+
+  // Apply volume automation on top of envelope
+  if (note.automation?.volumePoints) {
+    for (const [beatOff, gainMul] of note.automation.volumePoints) {
+      const t = startTime + beatOff * secsPerBeat;
+      if (t >= startTime && t <= releaseStart + r) {
+        gain.gain.setValueAtTime(gainMul * v, t);
+      }
+    }
+  }
+
+  // --- Panning ---
+  let outputNode: AudioNode = gain;
+  if (note.automation?.pan !== undefined) {
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = Math.max(-1, Math.min(1, note.automation.pan));
+    gain.connect(panner);
+    panner.connect(destination);
+    outputNode = panner;
+  } else {
+    gain.connect(destination);
+  }
+
+  // --- Source ---
+  if (instr.type === 'sample' && instr.sample && sampleCache[instr.id]) {
+    const src = ctx.createBufferSource();
+    src.buffer = sampleCache[instr.id];
+    const baseNote = instr.sample.baseNote ?? 48;
+    const baseRate = Math.pow(2, (note.pitch - baseNote) / 12);
+    src.playbackRate.value = baseRate;
+
+    // Apply pitch automation as playbackRate changes
+    if (note.automation?.pitchPoints) {
+      for (const [beatOff, semShift] of note.automation.pitchPoints) {
+        const t = startTime + beatOff * secsPerBeat;
+        if (t >= startTime && t <= releaseStart + r) {
+          src.playbackRate.setValueAtTime(baseRate * Math.pow(2, semShift / 12), t);
+        }
+      }
+    }
+
+    if (instr.sample.loopLength > 0) {
+      src.loop = true;
+      src.loopStart = instr.sample.loopStart / instr.sample.sampleRate;
+      src.loopEnd = (instr.sample.loopStart + instr.sample.loopLength) / instr.sample.sampleRate;
+    }
+    src.connect(gain);
+
+    // Apply sample offset (effect 9)
+    const offsetFrames = note.automation?.sampleOffset ?? 0;
+    const offsetSecs = offsetFrames / instr.sample.sampleRate;
+    src.start(startTime, offsetSecs);
+    src.stop(releaseStart + r + 0.01);
+  } else {
+    const osc = ctx.createOscillator();
+    osc.type = instr.osc ?? 'sine';
+    const baseFreq = midiToFreq(note.pitch);
+    osc.frequency.value = baseFreq;
+
+    // Apply pitch automation as frequency changes
+    if (note.automation?.pitchPoints) {
+      for (const [beatOff, semShift] of note.automation.pitchPoints) {
+        const t = startTime + beatOff * secsPerBeat;
+        if (t >= startTime && t <= releaseStart + r) {
+          osc.frequency.setValueAtTime(baseFreq * Math.pow(2, semShift / 12), t);
+        }
+      }
+    }
+
+    osc.connect(gain);
+    osc.start(startTime);
+    osc.stop(releaseStart + r + 0.01);
+  }
+
+  return { gain, outputNode };
+}
+
 export function createScheduler(
   ctx: AudioContext,
   tracks: Track[],
@@ -31,50 +135,18 @@ export function createScheduler(
   const secsPerBeat = 60 / bpm;
   const loopLength = opts.loopEnd - opts.loopStart;
 
-  let scheduledUpTo = 0; // play-beats (monotonically increasing from 0)
+  let scheduledUpTo = 0;
   let stopped = false;
 
   const activeSources: (OscillatorNode | AudioBufferSourceNode)[] = [];
   const activeGains: GainNode[] = [];
+  const activePanners: StereoPannerNode[] = [];
 
-  function scheduleNote(note: Note, instr: Instrument, audioStartTime: number) {
-    const durSecs = Math.max(beatsToSeconds(note.duration, bpm), 0.05);
-    const { attack: a, decay: d, sustain: s, release: r } = instr;
-    const v = note.velocity;
-    const releaseStart = Math.max(audioStartTime + durSecs - r, audioStartTime + a + d);
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, audioStartTime);
-    gain.gain.linearRampToValueAtTime(v, audioStartTime + a);
-    gain.gain.linearRampToValueAtTime(s * v, audioStartTime + a + d);
-    gain.gain.setValueAtTime(s * v, releaseStart);
-    gain.gain.linearRampToValueAtTime(0, releaseStart + r);
-    gain.connect(ctx.destination);
+  function scheduleNoteWrapped(note: Note, instr: Instrument, audioNoteStart: number) {
+    const { gain, outputNode } = scheduleNote(ctx, ctx.destination, note, instr, audioNoteStart, bpm, opts.sampleCache);
     activeGains.push(gain);
-
-    if (instr.type === 'sample' && instr.sample && opts.sampleCache[instr.id]) {
-      const src = ctx.createBufferSource();
-      src.buffer = opts.sampleCache[instr.id];
-      const baseNote = instr.sample.baseNote ?? 48;
-      src.playbackRate.value = Math.pow(2, (note.pitch - baseNote) / 12);
-      if (instr.sample.loopLength > 0) {
-        src.loop = true;
-        src.loopStart = instr.sample.loopStart / instr.sample.sampleRate;
-        src.loopEnd = (instr.sample.loopStart + instr.sample.loopLength) / instr.sample.sampleRate;
-      }
-      src.connect(gain);
-      src.start(audioStartTime);
-      src.stop(releaseStart + r + 0.01);
-      activeSources.push(src);
-    } else {
-      const osc = ctx.createOscillator();
-      osc.type = instr.osc ?? 'sine';
-      osc.frequency.value = midiToFreq(note.pitch);
-      osc.connect(gain);
-      osc.start(audioStartTime);
-      osc.stop(releaseStart + r + 0.01);
-      activeSources.push(osc);
-    }
+    if (outputNode instanceof StereoPannerNode) activePanners.push(outputNode);
+    // Collect oscillators/sources from gain's inputs (already connected in scheduleNote)
   }
 
   function tick() {
@@ -83,7 +155,6 @@ export function createScheduler(
     const now = ctx.currentTime;
     const targetPlayBeat = (now - t0 + LOOKAHEAD_SEC) / secsPerBeat;
 
-    // Non-looping: stop scheduling once past the loop range
     if (!opts.loopEnabled && scheduledUpTo >= loopLength) {
       opts.onStop?.();
       return;
@@ -102,28 +173,25 @@ export function createScheduler(
         if (!clip) continue;
 
         for (const note of clip.notes) {
-          const arrBeat = pl.startBeat + note.beat; // arrangement beat
+          const arrBeat = pl.startBeat + note.beat;
 
-          // Only consider notes within the loop range
           if (arrBeat < opts.loopStart || arrBeat >= opts.loopEnd) continue;
 
-          // play-beat offset of this note within the loop
           const base = arrBeat - opts.loopStart;
 
           if (opts.loopEnabled) {
-            // Find all loop iterations where this note falls in [scheduledUpTo, targetPlayBeat)
             const nMin = Math.ceil((scheduledUpTo - base) / loopLength);
             const nMax = Math.floor((targetPlayBeat - base - 1e-9) / loopLength);
             for (let n = Math.max(0, nMin); n <= nMax; n++) {
               const playBeat = base + n * loopLength;
               if (playBeat >= scheduledUpTo && playBeat < targetPlayBeat) {
-                scheduleNote(note, instr, t0 + playBeat * secsPerBeat);
+                scheduleNoteWrapped(note, instr, t0 + playBeat * secsPerBeat);
               }
             }
           } else {
             const playBeat = base;
             if (playBeat >= scheduledUpTo && playBeat < targetPlayBeat && playBeat < loopLength) {
-              scheduleNote(note, instr, t0 + playBeat * secsPerBeat);
+              scheduleNoteWrapped(note, instr, t0 + playBeat * secsPerBeat);
             }
           }
         }
@@ -142,6 +210,7 @@ export function createScheduler(
         src.disconnect();
       }
       for (const g of activeGains) g.disconnect();
+      for (const p of activePanners) p.disconnect();
     },
     getDisplayBeat() {
       const playBeat = (ctx.currentTime - t0) / secsPerBeat;
@@ -163,11 +232,9 @@ export async function renderOffline(
   startBeat: number,
   endBeat: number,
 ): Promise<AudioBuffer> {
-  const durationSecs = beatsToSeconds(endBeat - startBeat, bpm) + 2; // +2s tail for release
+  const durationSecs = beatsToSeconds(endBeat - startBeat, bpm) + 2;
   const sampleRate = 44100;
   const offCtx = new OfflineAudioContext(2, Math.ceil(durationSecs * sampleRate), sampleRate);
-  const t0 = offCtx.currentTime;
-  const secsPerBeat = 60 / bpm;
 
   for (const track of tracks) {
     if (track.muted) continue;
@@ -182,41 +249,8 @@ export async function renderOffline(
         const arrBeat = pl.startBeat + note.beat;
         if (arrBeat < startBeat || arrBeat >= endBeat) continue;
 
-        const audioStart = t0 + (arrBeat - startBeat) * secsPerBeat;
-        const durSecs = Math.max(beatsToSeconds(note.duration, bpm), 0.05);
-        const { attack: a, decay: d, sustain: s, release: r } = instr;
-        const v = note.velocity;
-        const releaseStart = Math.max(audioStart + durSecs - r, audioStart + a + d);
-
-        const gain = offCtx.createGain();
-        gain.gain.setValueAtTime(0, audioStart);
-        gain.gain.linearRampToValueAtTime(v, audioStart + a);
-        gain.gain.linearRampToValueAtTime(s * v, audioStart + a + d);
-        gain.gain.setValueAtTime(s * v, releaseStart);
-        gain.gain.linearRampToValueAtTime(0, releaseStart + r);
-        gain.connect(offCtx.destination);
-
-        if (instr.type === 'sample' && instr.sample && sampleCache[instr.id]) {
-          const src = offCtx.createBufferSource();
-          src.buffer = sampleCache[instr.id];
-          const baseNote = instr.sample.baseNote ?? 48;
-          src.playbackRate.value = Math.pow(2, (note.pitch - baseNote) / 12);
-          if (instr.sample.loopLength > 0) {
-            src.loop = true;
-            src.loopStart = instr.sample.loopStart / instr.sample.sampleRate;
-            src.loopEnd = (instr.sample.loopStart + instr.sample.loopLength) / instr.sample.sampleRate;
-          }
-          src.connect(gain);
-          src.start(audioStart);
-          src.stop(releaseStart + r + 0.01);
-        } else {
-          const osc = offCtx.createOscillator();
-          osc.type = instr.osc ?? 'sine';
-          osc.frequency.value = midiToFreq(note.pitch);
-          osc.connect(gain);
-          osc.start(audioStart);
-          osc.stop(releaseStart + r + 0.01);
-        }
+        const audioStart = (arrBeat - startBeat) * (60 / bpm);
+        scheduleNote(offCtx, offCtx.destination, note, instr, audioStart, bpm, sampleCache);
       }
     }
   }

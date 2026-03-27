@@ -27,6 +27,21 @@ export interface Note {
   beat: number;      // start beat within clip (0-indexed)
   duration: number;  // in beats
   velocity: number;  // 0-1
+  automation?: NoteAutomation;
+}
+
+/** Pre-computed parameter automation attached to a note (used by MOD effect import). */
+export interface NoteAutomation {
+  /** [beatOffset from note start, semitone shift from base pitch] */
+  pitchPoints?: [number, number][];
+  /** [beatOffset from note start, gain multiplier 0..1] */
+  volumePoints?: [number, number][];
+  /** Stereo pan -1 (left) to +1 (right); 0 = center. From effect 'setPanning'. */
+  pan?: number;
+  /** Sample playback start offset in frames. From effect 'setSampleOffset'. */
+  sampleOffset?: number;
+  /** Delay before note starts, in beats. From effect 'delaySample'. */
+  startDelayBeats?: number;
 }
 
 export interface Clip {

@@ -186,7 +186,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
       }
     };
 
-    const onUp = (_e: MouseEvent) => {
+    const onUp = () => {
       const ds = dragRef.current;
       if (!ds) return;
       dragRef.current = null;
