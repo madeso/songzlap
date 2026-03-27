@@ -7,7 +7,7 @@ import {
 import { createScheduler, renderOffline } from './audio'
 import type { Scheduler } from './audio'
 import { encodeWAV, downloadBlob } from './wav'
-import { parseMod } from './mod'
+import { parseMod, modToAppState } from './mod'
 import { makeEmptyState } from './store'
 import Transport from './components/Transport'
 import TrackHeaders from './components/TrackHeaders'
@@ -147,7 +147,7 @@ function App() {
       const file = input.files?.[0]; if (!file) return
       const buf = await file.arrayBuffer()
       try {
-        const parsed = parseMod(buf)
+        const parsed = modToAppState(parseMod(buf))
         sampleCacheRef.current = {}
         dispatch(loadSong(parsed as Omit<AppState, 'playing'>))
       } catch (e) { alert(`Could not parse MOD file: ${e}`) }
