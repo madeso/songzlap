@@ -316,6 +316,20 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     }
   }, [getSvgCoords, findNoteAt, getNoteZone, totalCells, clipId, dispatch, clip.notes]);
 
+  const handleOverlayDoubleClick = useCallback((e: React.MouseEvent<SVGRectElement>) => {
+    e.preventDefault();
+    // Cancel any drag that the first mousedown may have started
+    dragRef.current = null;
+    setDragState(null);
+    const coords = getSvgCoords(e.clientX, e.clientY);
+    if (!coords) return;
+    const note = findNoteAt(coords.x, coords.y);
+    if (note) {
+      dispatch(removeNote({ clipId, noteId: note.id }));
+      setSelectedNoteIds(prev => { const next = new Set(prev); next.delete(note.id); return next; });
+    }
+  }, [getSvgCoords, findNoteAt, clipId, dispatch]);
+
   const renderNote = (note: Note) => {
     let durCells = Math.max(1, Math.round(note.duration * SUBDIV));
     let noteX = note.beat * SUBDIV * PR_CELL_WIDTH;
@@ -569,6 +583,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
                 style={{ cursor }}
                 onMouseDown={handleOverlayMouseDown}
                 onMouseMove={handleOverlayMouseMove}
+                onDoubleClick={handleOverlayDoubleClick}
                 onMouseLeave={() => { if (!dragRef.current) setCursor('crosshair'); }}
               />
             )}
