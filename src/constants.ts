@@ -16,7 +16,7 @@ export const PR_NOTE_COUNT = PR_NOTE_MAX - PR_NOTE_MIN;
 export const PR_NOTE_HEIGHT = 16;
 export const PR_KEY_WIDTH = 56;
 export const PR_CELL_WIDTH = 20;     // px per 16th note
-export const VELOCITY_LANE_H = 48;  // px height of velocity lane in piano roll
+export const VELOCITY_LANE_H = 32;  // px height of velocity lane in piano roll
 
 export const TRACK_COLORS = [
   '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b',

@@ -28,6 +28,92 @@ function fmtLen(beats: number): string {
   return match ? match[1] : `${+beats.toFixed(3)}b`;
 }
 
+interface KnobProps {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  label: string;
+  onChange: (v: number) => void;
+  disabled?: boolean;
+}
+
+function Knob({ value, min, max, step = 1, label, onChange, disabled = false }: KnobProps) {
+  const SIZE = 28;
+  const R = 10;
+  const CX = SIZE / 2;
+  const CY = SIZE / 2;
+  const [showVal, setShowVal] = useState(false);
+  const knobDragRef = useRef<{ y: number; v: number } | null>(null);
+
+  const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
+  const angle = -135 + t * 270;
+
+  const toRad = (deg: number) => (deg - 90) * (Math.PI / 180);
+  const px = (deg: number) => CX + R * Math.cos(toRad(deg));
+  const py = (deg: number) => CY + R * Math.sin(toRad(deg));
+
+  function arc(a1: number, a2: number): string {
+    const span = ((a2 - a1) % 360 + 360) % 360;
+    return `M ${px(a1).toFixed(2)} ${py(a1).toFixed(2)} A ${R} ${R} 0 ${span > 180 ? 1 : 0} 1 ${px(a2).toFixed(2)} ${py(a2).toFixed(2)}`;
+  }
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (disabled) return;
+    e.preventDefault();
+    knobDragRef.current = { y: e.clientY, v: value };
+    const onMove = (me: MouseEvent) => {
+      if (!knobDragRef.current) return;
+      const dy = knobDragRef.current.y - me.clientY; // drag up = increase
+      const rawVal = knobDragRef.current.v + (dy / 100) * (max - min);
+      const stepped = Math.round(rawVal / step) * step;
+      onChange(Math.max(min, Math.min(max, stepped)));
+    };
+    const onUp = () => {
+      knobDragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const displayVal = step >= 1 ? String(Math.round(value)) : String(+value.toFixed(2));
+
+  return (
+    <div className="flex flex-col items-center select-none" style={{ gap: 2 }}>
+      <svg
+        width={SIZE} height={SIZE}
+        style={{ cursor: disabled ? 'not-allowed' : 'ns-resize', overflow: 'visible' }}
+        onMouseDown={onMouseDown}
+        onMouseEnter={() => setShowVal(true)}
+        onMouseLeave={() => setShowVal(false)}
+      >
+        {/* Track arc: full 270° range */}
+        <path d={arc(-135, 135)} fill="none" stroke="#3f3f46" strokeWidth={2.5} strokeLinecap="round" />
+        {/* Active arc */}
+        {t > 0.001 && (
+          <path d={arc(-135, angle)} fill="none" stroke={disabled ? '#52525b' : '#8b5cf6'} strokeWidth={2.5} strokeLinecap="round" />
+        )}
+        {/* Pointer */}
+        <line x1={CX} y1={CY} x2={px(angle).toFixed(2)} y2={py(angle).toFixed(2)}
+          stroke={disabled ? '#52525b' : '#a78bfa'} strokeWidth={1.5} strokeLinecap="round" />
+        {/* Center dot */}
+        <circle cx={CX} cy={CY} r={1.5} fill={disabled ? '#52525b' : '#a78bfa'} />
+        {/* Value on hover */}
+        {showVal && !disabled && (
+          <text x={CX} y={CY + 1} textAnchor="middle" dominantBaseline="middle"
+            fill="white" fontSize={7} fontFamily="Inter, sans-serif"
+            style={{ pointerEvents: 'none' }}>
+            {displayVal}
+          </text>
+        )}
+      </svg>
+      <span style={{ fontSize: 9, color: '#71717a', lineHeight: 1 }}>{label}</span>
+    </div>
+  );
+}
+
 type DragState =
   | { kind: 'drawing'; pitch: number; startCell: number; endCell: number }
   | { kind: 'resize-right'; noteId: string; origDurCells: number; curDurCells: number; startX: number }
@@ -65,6 +151,8 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const [lastDur, setLastDur] = useState<number>(1);
   const [cursor, setCursor] = useState<string>('crosshair');
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [hoveredNoteId, setHoveredNoteId] = useState<string | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState<boolean>(true);
 
   const velSvgRef = useRef<SVGSVGElement>(null);
   const velScrollRef = useRef<HTMLDivElement>(null);
@@ -81,6 +169,9 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   // Keep selection in sync: remove IDs that no longer exist in the clip
   const selectedRef = useRef(selectedNoteIds);
   useEffect(() => { selectedRef.current = selectedNoteIds; });
+
+  // Stable ID of the single selected note (or undefined)
+  const selectedNoteId = !isChord && selectedNoteIds.size === 1 ? [...selectedNoteIds][0] : undefined;
 
   // Scroll to center of the display range on first mount only
   const initialScrollDone = useRef(false);
@@ -269,6 +360,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     const coords = getSvgCoords(e.clientX, e.clientY);
     if (!coords) return;
     const note = findNoteAt(coords.x, coords.y);
+    setHoveredNoteId(note?.id ?? null);
     if (note) {
       const zone = getNoteZone(note, coords.x);
       if (zone === 'left-handle') setCursor('w-resize');
@@ -496,9 +588,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
 
   if (!clip) return null;
 
-  const selectedNote = !isChord && selectedNoteIds.size === 1
-    ? clip.notes.find(n => n.id === [...selectedNoteIds][0])
-    : undefined;
+  const selectedNote = selectedNoteId ? clip.notes.find(n => n.id === selectedNoteId) : undefined;
 
   // Playhead within this clip
   const placement = tracks.flatMap(t => t.placements).find(p => p.clipId === clipId);
@@ -557,8 +647,17 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
             {selectedNoteIds.size > 1 && (
               <span className="text-xs text-violet-400 tabular-nums">{selectedNoteIds.size} selected</span>
             )}
-            {!selectedNote && (
+            {!selectedNote && !inspectorOpen && (
               <span className="text-xs text-zinc-600">Draw · Drag to move · ⇥ edges to resize · Ctrl+click or Del to delete</span>
+            )}
+            {!inspectorOpen && (
+              <button
+                onClick={() => setInspectorOpen(true)}
+                title="Open note inspector"
+                className="flex items-center justify-center px-1.5 h-5 rounded text-zinc-500 hover:text-violet-400 hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">tune</span>
+              </button>
             )}
             <div className="flex items-center gap-0.5 ml-2">
               <button
@@ -579,69 +678,60 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
         </button>
       </div>
 
-      {/* Note inspector strip — shown when exactly 1 melody note is selected */}
-      {!isChord && selectedNote && (
-        <div className="flex items-center px-3 gap-2 bg-zinc-900 border-b border-zinc-700 shrink-0 h-7">
-          <span className="text-xs text-violet-400">♩</span>
-          <span className="text-xs text-zinc-600 tabular-nums">{midiToName(selectedNote.pitch)} {fmtLen(selectedNote.duration)}</span>
+      {/* Note inspector strip — always shown for melody clips; grayed when no single note selected */}
+      {!isChord && inspectorOpen && (
+        <div className="flex items-center px-3 gap-3 bg-zinc-900 border-b border-zinc-700 shrink-0" style={{ minHeight: 48, paddingTop: 4, paddingBottom: 4 }}>
+          <span className="material-symbols-outlined text-violet-400 text-sm shrink-0">tune</span>
 
-          <label className="text-xs text-zinc-500 ml-1">Vel</label>
-          <input
-            type="number" min={1} max={100}
-            value={Math.round(selectedNote.velocity * 100)}
-            onChange={e => {
-              const v = Number(e.target.value);
-              if (!isNaN(v) && e.target.value !== '') dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, velocity: v / 100 }));
-            }}
-            className="w-10 text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 tabular-nums"
-          />
+          {/* Knobs + badges — dimmed and non-interactive when no single note selected */}
+          <div className="flex items-center gap-3 flex-1" style={{ opacity: selectedNote ? 1 : 0.35, pointerEvents: selectedNote ? 'auto' : 'none' }}>
+            <span className="text-xs text-zinc-600 tabular-nums shrink-0 w-14">
+              {selectedNote
+                ? `${midiToName(selectedNote.pitch)} ${fmtLen(selectedNote.duration)}`
+                : selectedNoteIds.size > 1 ? `${selectedNoteIds.size} notes` : 'no note'}
+            </span>
 
-          <label className="text-xs text-zinc-500">Pan</label>
-          <input
-            type="number" min={-100} max={100}
-            value={Math.round((selectedNote.automation?.pan ?? 0) * 100)}
-            onChange={e => {
-              const v = Number(e.target.value);
-              if (!isNaN(v) && e.target.value !== '') {
-                const panVal = v / 100;
-                dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, pan: panVal === 0 ? null : panVal }));
-              }
-            }}
-            className="w-12 text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 tabular-nums"
-          />
-
-          <label className="text-xs text-zinc-500">Delay</label>
-          <input
-            type="number" min={0} max={8} step={0.25}
-            value={selectedNote.automation?.startDelayBeats ?? 0}
-            onChange={e => {
-              const v = Number(e.target.value);
-              if (!isNaN(v) && e.target.value !== '') dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, startDelayBeats: v > 0 ? v : null }));
-            }}
-            className="w-12 text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 tabular-nums"
-          />
-
-          {isSampleInstrument && (
-            <>
-              <label className="text-xs text-zinc-500">Offset</label>
-              <input
-                type="number" min={0} step={1}
-                value={selectedNote.automation?.sampleOffset ?? 0}
-                onChange={e => {
-                  const v = Number(e.target.value);
-                  if (!isNaN(v) && e.target.value !== '') dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, sampleOffset: v > 0 ? v : null }));
-                }}
-                className="w-14 text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 tabular-nums"
+            <Knob
+              value={selectedNote ? Math.round(selectedNote.velocity * 100) : 80}
+              min={1} max={100} step={1} label="Vel"
+              disabled={!selectedNote}
+              onChange={v => selectedNote && dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, velocity: v / 100 }))}
+            />
+            <Knob
+              value={selectedNote ? Math.round((selectedNote.automation?.pan ?? 0) * 100) : 0}
+              min={-100} max={100} step={1} label="Pan"
+              disabled={!selectedNote}
+              onChange={v => selectedNote && dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, pan: v === 0 ? null : v / 100 }))}
+            />
+            <Knob
+              value={selectedNote ? (selectedNote.automation?.startDelayBeats ?? 0) : 0}
+              min={0} max={8} step={0.25} label="Delay"
+              disabled={!selectedNote}
+              onChange={v => selectedNote && dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, startDelayBeats: v > 0 ? v : null }))}
+            />
+            {isSampleInstrument && (
+              <Knob
+                value={selectedNote ? (selectedNote.automation?.sampleOffset ?? 0) : 0}
+                min={0} max={8000} step={1} label="Offset"
+                disabled={!selectedNote}
+                onChange={v => selectedNote && dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, sampleOffset: v > 0 ? v : null }))}
               />
-            </>
-          )}
+            )}
+            {selectedNote && (selectedNote.automation?.pitchPoints?.length ?? 0) > 0 && (
+              <span className="text-xs text-violet-400 tabular-nums self-center" title="Has pitch automation from MOD import">~pitch</span>
+            )}
+            {selectedNote && (selectedNote.automation?.volumePoints?.length ?? 0) > 0 && (
+              <span className="text-xs text-amber-400 tabular-nums self-center" title="Has volume automation from MOD import">~vol</span>
+            )}
+          </div>
 
-          {(selectedNote.automation?.pitchPoints?.length ?? 0) > 0 && (
-            <span className="text-xs text-violet-400 tabular-nums" title="Has pitch automation from MOD import">~pitch</span>
-          )}
-          {(selectedNote.automation?.volumePoints?.length ?? 0) > 0 && (
-            <span className="text-xs text-amber-400 tabular-nums" title="Has volume automation from MOD import">~vol</span>
-          )}
+          <button
+            onClick={() => setInspectorOpen(false)}
+            className="text-zinc-600 hover:text-zinc-300 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition-colors"
+            title="Close inspector"
+          >
+            <span className="material-symbols-outlined text-sm">close</span>
+          </button>
         </div>
       )}
 
@@ -731,7 +821,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
                 onMouseDown={handleOverlayMouseDown}
                 onMouseMove={handleOverlayMouseMove}
                 onDoubleClick={handleOverlayDoubleClick}
-                onMouseLeave={() => { if (!dragRef.current) setCursor('crosshair'); }}
+                onMouseLeave={() => { if (!dragRef.current) { setCursor('crosshair'); setHoveredNoteId(null); } }}
               />
             )}
           </svg>
@@ -777,15 +867,15 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
               {/* Velocity bar per note */}
               {clip.notes.map(n => {
                 const x = n.beat * SUBDIV * PR_CELL_WIDTH;
-                const barW = Math.max(3, Math.min(n.duration * SUBDIV * PR_CELL_WIDTH - 2, PR_CELL_WIDTH * 2));
                 const barH = Math.max(2, Math.round(n.velocity * (VELOCITY_LANE_H - 4)));
                 const isSel = selectedNoteIds.has(n.id);
+                const isHov = n.id === hoveredNoteId;
                 return (
                   <rect key={n.id}
                     x={x + 1} y={VELOCITY_LANE_H - barH}
-                    width={barW} height={barH}
-                    fill={isSel ? '#a78bfa' : '#8b5cf6'}
-                    rx={1} opacity={isSel ? 1 : 0.7}
+                    width={4} height={barH}
+                    fill={isSel || isHov ? '#c4b5fd' : '#8b5cf6'}
+                    rx={1} opacity={isSel || isHov ? 1 : 0.7}
                   />
                 );
               })}
