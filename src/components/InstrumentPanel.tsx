@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/index';
 import { addInstrument, removeInstrument, openInstrument } from '../store/slice';
 import { INSTRUMENTS } from '../constants';
@@ -18,6 +18,9 @@ export default function InstrumentPanel({ onClose }: Props) {
   const openInstrumentId = useAppSelector(s => s.song.openInstrumentId);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [presetsOpen, setPresetsOpen] = useState(false);
+  const [panelWidth, setPanelWidth] = useState<number>(() =>
+    Number(localStorage.getItem('tunes-instrument-w')) || 288);
+  const panelResizeDragRef = useRef<{ startX: number; startW: number } | null>(null);
 
   const instrList = Object.values(instruments);
   const usedIds = new Set(tracks.map(t => t.instrumentId));
@@ -53,7 +56,31 @@ export default function InstrumentPanel({ onClose }: Props) {
   }
 
   return (
-    <div className="flex flex-col w-72 border-l border-zinc-800 bg-zinc-950 shrink-0 overflow-hidden">
+    <div className="flex flex-col border-l border-zinc-800 bg-zinc-950 shrink-0 overflow-hidden relative" style={{ width: panelWidth }}>
+      {/* Panel resize handle — drag left to make wider */}
+      <div
+        className="absolute left-0 top-0 bottom-0 cursor-ew-resize hover:bg-violet-500/25 transition-colors group flex items-center justify-center z-10"
+        style={{ width: 5 }}
+        onMouseDown={e => {
+          e.preventDefault();
+          panelResizeDragRef.current = { startX: e.clientX, startW: panelWidth };
+          const onMove = (me: MouseEvent) => {
+            if (!panelResizeDragRef.current) return;
+            const newW = panelResizeDragRef.current.startW + (panelResizeDragRef.current.startX - me.clientX);
+            setPanelWidth(newW);
+            localStorage.setItem('tunes-instrument-w', String(newW));
+          };
+          const onUp = () => {
+            panelResizeDragRef.current = null;
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+          };
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+        }}
+      >
+        <div className="h-8 w-px bg-zinc-700 group-hover:bg-violet-400/50 transition-colors" />
+      </div>
       {/* Panel header */}
       <div className="flex items-center gap-2 px-3 h-9 bg-zinc-900 border-b border-zinc-800 shrink-0">
         <span className="material-symbols-outlined text-violet-400 text-sm">piano</span>

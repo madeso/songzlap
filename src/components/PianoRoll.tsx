@@ -153,6 +153,13 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
   const [hoveredNoteId, setHoveredNoteId] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(true);
+  const [panelHeight, setPanelHeight] = useState<number>(() =>
+    Number(localStorage.getItem('tunes-piano-roll-h')) || 328);
+  const [velLaneHeight, setVelLaneHeight] = useState<number>(() =>
+    Number(localStorage.getItem('tunes-vel-lane-h')) || VELOCITY_LANE_H);
+
+  const panelResizeDragRef = useRef<{ startY: number; startH: number } | null>(null);
+  const velResizeDragRef = useRef<{ startY: number; startH: number } | null>(null);
 
   const velSvgRef = useRef<SVGSVGElement>(null);
   const velScrollRef = useRef<HTMLDivElement>(null);
@@ -343,7 +350,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
       const rect = velSvgRef.current?.getBoundingClientRect();
       if (!rect) return;
       const y = e.clientY - rect.top;
-      const velocity = Math.max(0.01, Math.min(1, 1 - y / VELOCITY_LANE_H));
+      const velocity = Math.max(0.01, Math.min(1, 1 - y / velLaneHeight));
       dispatch(setNoteAutomation({ clipId, noteId: velDragRef.current, velocity }));
     };
     const onUp = () => { velDragRef.current = null; };
@@ -353,7 +360,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [clipId, dispatch]);
+  }, [clipId, dispatch, velLaneHeight]);
 
   const handleOverlayMouseMove = useCallback((e: React.MouseEvent<SVGRectElement>) => {
     if (dragRef.current) return;
@@ -468,9 +475,9 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     }
     if (!closest || closestDist > PR_CELL_WIDTH * 2) return;
     velDragRef.current = closest.id;
-    const velocity = Math.max(0.01, Math.min(1, 1 - y / VELOCITY_LANE_H));
+    const velocity = Math.max(0.01, Math.min(1, 1 - y / velLaneHeight));
     dispatch(setNoteAutomation({ clipId, noteId: closest.id, velocity }));
-  }, [clip.notes, clipId, dispatch]);
+  }, [clip.notes, clipId, dispatch, velLaneHeight]);
 
   const renderNote = (note: Note) => {
     let durCells = Math.max(1, Math.round(note.duration * SUBDIV));
@@ -597,7 +604,31 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const playheadX = clipRelativeBeat * SUBDIV * PR_CELL_WIDTH;
 
   return (
-    <div className="border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0 h-[328px]">
+    <div className="border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0" style={{ height: panelHeight }}>
+      {/* Panel resize handle — drag up to make taller */}
+      <div
+        className="shrink-0 w-full cursor-ns-resize hover:bg-violet-500/25 transition-colors group flex items-center justify-center"
+        style={{ height: 5 }}
+        onMouseDown={e => {
+          e.preventDefault();
+          panelResizeDragRef.current = { startY: e.clientY, startH: panelHeight };
+          const onMove = (me: MouseEvent) => {
+            if (!panelResizeDragRef.current) return;
+            const newH = panelResizeDragRef.current.startH + (panelResizeDragRef.current.startY - me.clientY);
+            setPanelHeight(newH);
+            localStorage.setItem('tunes-piano-roll-h', String(newH));
+          };
+          const onUp = () => {
+            panelResizeDragRef.current = null;
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+          };
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+        }}
+      >
+        <div className="w-8 h-px bg-zinc-700 group-hover:bg-violet-400/50 transition-colors" />
+      </div>
       {/* Chord settings bar — shown above the header when a chord clip is open */}
       {isChord && chordCfg && (
         <div className="flex items-center px-3 gap-2 bg-zinc-900 border-b border-zinc-700 shrink-0 h-7">
@@ -831,55 +862,81 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
 
       {/* Velocity lane — below the note grid, scrolls horizontally in sync with grid */}
       {!isChord && (
-        <div className="flex shrink-0 border-t border-zinc-800" style={{ height: VELOCITY_LANE_H }}>
-          {/* Label column — aligns with piano keys */}
-          <div className="shrink-0 flex items-center justify-center bg-zinc-900 border-r border-zinc-800" style={{ width: PR_KEY_WIDTH }}>
-            <span className="text-xs text-zinc-500">vel</span>
-          </div>
-          {/* Scrollable velocity bars — horizontal scroll synced with grid */}
+        <div className="flex flex-col shrink-0 border-t border-zinc-800">
+          {/* Velocity lane resize handle — drag up to make taller */}
           <div
-            ref={velScrollRef}
-            className="flex-1 overflow-x-auto overflow-y-hidden"
-            onScroll={() => {
-              if (gridScrollRef.current && velScrollRef.current) {
-                gridScrollRef.current.scrollLeft = velScrollRef.current.scrollLeft;
-              }
+            className="shrink-0 w-full cursor-ns-resize hover:bg-violet-500/25 transition-colors group flex items-center justify-center"
+            style={{ height: 5 }}
+            onMouseDown={e => {
+              e.preventDefault();
+              velResizeDragRef.current = { startY: e.clientY, startH: velLaneHeight };
+              const onMove = (me: MouseEvent) => {
+                if (!velResizeDragRef.current) return;
+                const newH = velResizeDragRef.current.startH + (velResizeDragRef.current.startY - me.clientY);
+                setVelLaneHeight(newH);
+                localStorage.setItem('tunes-vel-lane-h', String(newH));
+              };
+              const onUp = () => {
+                velResizeDragRef.current = null;
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+              };
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp);
             }}
           >
-            <svg
-              ref={velSvgRef}
-              width={gridWidth}
-              height={VELOCITY_LANE_H}
-              className="block select-none cursor-ns-resize"
-              onMouseDown={handleVelMouseDown}
+            <div className="w-8 h-px bg-zinc-700 group-hover:bg-violet-400/50 transition-colors" />
+          </div>
+          <div className="flex" style={{ height: velLaneHeight }}>
+            {/* Label column — aligns with piano keys */}
+            <div className="shrink-0 flex items-center justify-center bg-zinc-900 border-r border-zinc-800" style={{ width: PR_KEY_WIDTH }}>
+              <span className="text-xs text-zinc-500">vel</span>
+            </div>
+            {/* Scrollable velocity bars — horizontal scroll synced with grid */}
+            <div
+              ref={velScrollRef}
+              className="flex-1 overflow-x-auto overflow-y-hidden"
+              onScroll={() => {
+                if (gridScrollRef.current && velScrollRef.current) {
+                  gridScrollRef.current.scrollLeft = velScrollRef.current.scrollLeft;
+                }
+              }}
             >
-              <rect x={0} y={0} width={gridWidth} height={VELOCITY_LANE_H} fill="#0c0c10" />
-              {/* Grid lines matching the note grid */}
-              {Array.from({ length: totalCells + 1 }, (_, i) => {
-                const x = i * PR_CELL_WIDTH;
-                const isBeat = i % SUBDIV === 0;
-                const isBar = i % (SUBDIV * BEATS_PER_BAR) === 0;
-                return (
-                  <line key={i} x1={x} y1={0} x2={x} y2={VELOCITY_LANE_H}
-                    stroke={isBar ? '#3f3f46' : isBeat ? '#2a2a30' : '#1a1a20'} strokeWidth={1} />
-                );
-              })}
-              {/* Velocity bar per note */}
-              {clip.notes.map(n => {
-                const x = n.beat * SUBDIV * PR_CELL_WIDTH;
-                const barH = Math.max(2, Math.round(n.velocity * (VELOCITY_LANE_H - 4)));
-                const isSel = selectedNoteIds.has(n.id);
-                const isHov = n.id === hoveredNoteId;
-                return (
-                  <rect key={n.id}
-                    x={x + 1} y={VELOCITY_LANE_H - barH}
-                    width={4} height={barH}
-                    fill={isSel || isHov ? '#c4b5fd' : '#8b5cf6'}
-                    rx={1} opacity={isSel || isHov ? 1 : 0.7}
-                  />
-                );
-              })}
-            </svg>
+              <svg
+                ref={velSvgRef}
+                width={gridWidth}
+                height={velLaneHeight}
+                className="block select-none cursor-ns-resize"
+                onMouseDown={handleVelMouseDown}
+              >
+                <rect x={0} y={0} width={gridWidth} height={velLaneHeight} fill="#0c0c10" />
+                {/* Grid lines matching the note grid */}
+                {Array.from({ length: totalCells + 1 }, (_, i) => {
+                  const x = i * PR_CELL_WIDTH;
+                  const isBeat = i % SUBDIV === 0;
+                  const isBar = i % (SUBDIV * BEATS_PER_BAR) === 0;
+                  return (
+                    <line key={i} x1={x} y1={0} x2={x} y2={velLaneHeight}
+                      stroke={isBar ? '#3f3f46' : isBeat ? '#2a2a30' : '#1a1a20'} strokeWidth={1} />
+                  );
+                })}
+                {/* Velocity bar per note */}
+                {clip.notes.map(n => {
+                  const x = n.beat * SUBDIV * PR_CELL_WIDTH;
+                  const barH = Math.max(2, Math.round(n.velocity * (velLaneHeight - 4)));
+                  const isSel = selectedNoteIds.has(n.id);
+                  const isHov = n.id === hoveredNoteId;
+                  return (
+                    <rect key={n.id}
+                      x={x + 1} y={velLaneHeight - barH}
+                      width={4} height={barH}
+                      fill={isSel || isHov ? '#c4b5fd' : '#8b5cf6'}
+                      rx={1} opacity={isSel || isHov ? 1 : 0.7}
+                    />
+                  );
+                })}
+              </svg>
+            </div>
           </div>
         </div>
       )}
