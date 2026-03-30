@@ -378,7 +378,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     const handleW = isChord ? 0 : Math.min(RESIZE_HANDLE_PX, totalW) - 1;
 
     return (
-      <g key={note.id} style={{ pointerEvents: 'none' }} opacity={opacity}>
+      <g key={note.id} className="pointer-events-none" opacity={opacity}>
         <rect
           x={noteX + 1} y={renderY + 2}
           width={bodyW} height={PR_NOTE_HEIGHT - 3}
@@ -414,7 +414,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
         x={x + 1} y={y + 2}
         width={Math.max(w, 4)} height={PR_NOTE_HEIGHT - 3}
         fill="#8b5cf6" opacity={0.45} rx={2}
-        style={{ pointerEvents: 'none' }}
+        className="pointer-events-none"
       />
     );
   };
@@ -428,17 +428,17 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const playheadX = clipRelativeBeat * SUBDIV * PR_CELL_WIDTH;
 
   return (
-    <div className="border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0" style={{ height: 280 }}>
+    <div className="border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0 h-[280px]">
       {/* Chord settings bar — shown above the header when a chord clip is open */}
       {isChord && chordCfg && (
-        <div className="flex items-center px-3 gap-2 bg-zinc-900 border-b border-zinc-700 shrink-0" style={{ height: 28 }}>
+        <div className="flex items-center px-3 gap-2 bg-zinc-900 border-b border-zinc-700 shrink-0 h-7">
           <span className="text-xs text-violet-400 mr-1">♩ Chord</span>
 
           <label className="text-xs text-zinc-500">Duration</label>
           <select
             value={chordCfg.noteDuration}
             onChange={e => dispatch(setChordConfig({ trackId: chordTrack.id, config: { ...chordCfg, noteDuration: Number(e.target.value) } }))}
-            className="text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500"
+            className="text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
           >
             {NOTE_DUR_OPTIONS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
           </select>
@@ -447,7 +447,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
           <select
             value={chordCfg.octave}
             onChange={e => dispatch(setChordConfig({ trackId: chordTrack.id, config: { ...chordCfg, octave: Number(e.target.value) } }))}
-            className="text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500"
+            className="text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
           >
             {[-2,-1,0,1,2].map(o => <option key={o} value={o}>{o >= 0 ? `+${o}` : o}</option>)}
           </select>
@@ -456,7 +456,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
           <select
             value={chordCfg.style}
             onChange={e => dispatch(setChordConfig({ trackId: chordTrack.id, config: { ...chordCfg, style: e.target.value as ChordConfig['style'] } }))}
-            className="text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500"
+            className="text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
           >
             {STYLE_OPTIONS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
           </select>
@@ -467,8 +467,8 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
       )}
 
       {/* Header */}
-      <div className="flex items-center px-3 gap-2 bg-zinc-900 border-b border-zinc-800 shrink-0" style={{ height: 28 }}>
-        <span className="material-symbols-outlined text-violet-400" style={{ fontSize: 14 }}>piano</span>
+      <div className="flex items-center px-3 gap-2 bg-zinc-900 border-b border-zinc-800 shrink-0 h-7">
+        <span className="material-symbols-outlined text-violet-400 text-sm">piano</span>
         <span className="text-xs text-zinc-400 flex-1">Piano Roll</span>
         {!isChord && (
           <>
@@ -483,18 +483,18 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
               <button
                 title="Transpose down one octave"
                 onClick={() => dispatch(transposeClip({ clipId, semitones: -12 }))}
-                className="flex items-center justify-center px-1.5 h-5 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors text-xs font-bold tabular-nums"
+                className="flex items-center justify-center px-1.5 h-5 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition-colors text-xs font-bold tabular-nums"
               >oct−</button>
               <button
                 title="Transpose up one octave"
                 onClick={() => dispatch(transposeClip({ clipId, semitones: 12 }))}
-                className="flex items-center justify-center px-1.5 h-5 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors text-xs font-bold tabular-nums"
+                className="flex items-center justify-center px-1.5 h-5 rounded text-zinc-400 hover:text-white hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition-colors text-xs font-bold tabular-nums"
               >oct+</button>
             </div>
           </>
         )}
-        <button onClick={() => dispatch(openClip(null))} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-2">
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+        <button onClick={() => dispatch(openClip(null))} className="text-zinc-600 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition-colors ml-2">
+          <span className="material-symbols-outlined text-base">close</span>
         </button>
       </div>
 
@@ -502,7 +502,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
       <div className="flex-1 flex overflow-hidden">
 
         {/* Piano keys — never scrolls horizontally; vertical scroll synced with grid */}
-        <div ref={pianoRef} style={{ width: PR_KEY_WIDTH, flexShrink: 0, overflowY: 'hidden', overflowX: 'hidden' }}>
+        <div ref={pianoRef} className="shrink-0 overflow-hidden" style={{ width: PR_KEY_WIDTH }}>
           <svg width={PR_KEY_WIDTH} height={totalHeight} className="block select-none">
             {Array.from({ length: noteCount }, (_, i) => {
               const pitch = displayMax - 1 - i;
@@ -570,7 +570,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
               <line
                 x1={playheadX} y1={0} x2={playheadX} y2={totalHeight}
                 stroke="#ef4444" strokeWidth={1.5} opacity={0.85}
-                style={{ pointerEvents: 'none' }}
+                className="pointer-events-none"
               />
             )}
 

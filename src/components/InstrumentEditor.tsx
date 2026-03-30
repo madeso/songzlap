@@ -3,6 +3,7 @@ import type { Instrument, SampleData } from '../types';
 import { useAppDispatch, useAppSelector } from '../store/index';
 import { updateInstrument, openInstrument } from '../store/slice';
 import type { AppDispatch } from '../store/index';
+import { TRACK_HEIGHT } from '../constants';
 import WaveformIcon from './WaveformIcon';
 
 type OscType = OscillatorType;
@@ -92,8 +93,7 @@ function Knob({ label, value, min, max, step, display, onChange, size = 36 }: Kn
         width={size} height={size}
         viewBox={`0 0 ${size} ${size}`}
         onMouseDown={handleMouseDown}
-        style={{ cursor: 'ns-resize' }}
-        className="block"
+        className="block cursor-ns-resize"
       >
         {/* Track */}
         <path d={trackPath} fill="none" stroke="#3f3f46" strokeWidth={strokeW} strokeLinecap="round" />
@@ -114,7 +114,7 @@ function Knob({ label, value, min, max, step, display, onChange, size = 36 }: Kn
 }
 
 const W = 800; // SVG viewBox width (logical units)
-const H = 48;
+const H = TRACK_HEIGHT;
 const MID = H / 2;
 
 function Waveform({ sample }: { sample: SampleData }) {
@@ -214,10 +214,9 @@ export default function InstrumentEditor() {
     <div className="border-t border-zinc-800 bg-zinc-950 shrink-0">
       {/* Header row */}
       <div
-        className="flex items-center gap-3 px-3 bg-zinc-900 border-b border-zinc-800"
-        style={{ height: 28 }}
+        className="flex items-center gap-3 px-3 h-7 bg-zinc-900 border-b border-zinc-800"
       >
-        <span className="material-symbols-outlined text-violet-400" style={{ fontSize: 14 }}>
+        <span className="material-symbols-outlined text-violet-400 text-sm">
           piano
         </span>
 
@@ -238,7 +237,7 @@ export default function InstrumentEditor() {
                 key={value}
                 onClick={() => update(instr, { osc: value }, dispatch)}
                 title={value.charAt(0).toUpperCase() + value.slice(1)}
-                className={`flex items-center justify-center px-1.5 py-0.5 rounded transition-colors ${
+                className={`flex items-center justify-center px-1.5 py-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition-colors ${
                   instr.osc === value
                     ? 'bg-violet-600 text-white'
                     : 'text-zinc-500 hover:text-zinc-300'
@@ -256,9 +255,9 @@ export default function InstrumentEditor() {
 
         <button
           onClick={() => dispatch(openInstrument(null))}
-          className="text-zinc-600 hover:text-zinc-300 transition-colors"
+          className="text-zinc-600 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition-colors"
         >
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+          <span className="material-symbols-outlined text-base">close</span>
         </button>
       </div>
 

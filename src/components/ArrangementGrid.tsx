@@ -153,7 +153,7 @@ export default function ArrangementGrid({ currentBeat }: Props) {
           return (
             <>
               {/* Start handle: right-pointing flag */}
-              <g style={{ cursor: 'ew-resize' }}
+              <g className="cursor-ew-resize"
                 onMouseDown={e => startMarkerDrag(e, 'start')}
                 onClick={e => e.stopPropagation()}>
                 <polygon
@@ -164,7 +164,7 @@ export default function ArrangementGrid({ currentBeat }: Props) {
                 <rect x={loopStartX - 2} y={0} width={tw + 6} height={th} fill="transparent" />
               </g>
               {/* End handle: left-pointing flag */}
-              <g style={{ cursor: 'ew-resize' }}
+              <g className="cursor-ew-resize"
                 onMouseDown={e => startMarkerDrag(e, 'end')}
                 onClick={e => e.stopPropagation()}>
                 <polygon
@@ -240,7 +240,7 @@ export default function ArrangementGrid({ currentBeat }: Props) {
                               x={cx + 4} y={rowY + TRACK_HEIGHT - 4}
                               fontSize={9} fontFamily="Inter, sans-serif"
                               fill={track.color} opacity={0.7}
-                              style={{ pointerEvents: 'none' }}
+                              className="pointer-events-none"
                             >{label}</text>
                           )}
                         </>
@@ -255,17 +255,17 @@ export default function ArrangementGrid({ currentBeat }: Props) {
 
         {/* Playhead */}
         <line x1={playheadX} y1={0} x2={playheadX} y2={totalHeight}
-          stroke="#ef4444" strokeWidth={1.5} style={{ pointerEvents: 'none' }} opacity={playing ? 1 : 0.3} />
+          stroke="#ef4444" strokeWidth={1.5} className="pointer-events-none" opacity={playing ? 1 : 0.3} />
 
         {/* Loop region */}
         {loopEnabled && (
           <>
             <rect x={loopStartX} y={0} width={loopEndX - loopStartX} height={totalHeight}
-              fill="#a78bfa" fillOpacity={0.06} style={{ pointerEvents: 'none' }} />
+              fill="#a78bfa" fillOpacity={0.06} className="pointer-events-none" />
             <line x1={loopStartX} y1={0} x2={loopStartX} y2={totalHeight}
-              stroke="#10b981" strokeWidth={1.5} strokeDasharray="4,3" style={{ pointerEvents: 'none' }} />
+              stroke="#10b981" strokeWidth={1.5} strokeDasharray="4,3" className="pointer-events-none" />
             <line x1={loopEndX} y1={0} x2={loopEndX} y2={totalHeight}
-              stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4,3" style={{ pointerEvents: 'none' }} />
+              stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4,3" className="pointer-events-none" />
           </>
         )}
       </svg>

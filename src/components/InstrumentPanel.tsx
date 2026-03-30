@@ -56,21 +56,21 @@ export default function InstrumentPanel({ onClose }: Props) {
     <div className="flex flex-col w-72 border-l border-zinc-800 bg-zinc-950 shrink-0 overflow-hidden">
       {/* Panel header */}
       <div className="flex items-center gap-2 px-3 h-9 bg-zinc-900 border-b border-zinc-800 shrink-0">
-        <span className="material-symbols-outlined text-violet-400" style={{ fontSize: 14 }}>piano</span>
+        <span className="material-symbols-outlined text-violet-400 text-sm">piano</span>
         <span className="text-xs font-medium text-zinc-300 uppercase tracking-wider flex-1">Instruments</span>
         <button
           onClick={handleNew}
-          className="text-xs px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 hover:text-violet-400 hover:border-violet-600 transition-colors"
+          className="text-xs px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 hover:text-violet-400 hover:border-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition-colors"
           title="New instrument"
         >
           New
         </button>
         <button
           onClick={onClose}
-          className="text-zinc-600 hover:text-zinc-300 transition-colors ml-1"
+          className="text-zinc-600 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition-colors ml-1"
           title="Close panel"
         >
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+          <span className="material-symbols-outlined text-base">close</span>
         </button>
       </div>
 
@@ -85,14 +85,17 @@ export default function InstrumentPanel({ onClose }: Props) {
           return (
             <div key={instr.id}>
               <div
-                className={`flex items-center gap-2 px-3 h-9 cursor-pointer select-none transition-colors ${
+                className={`flex items-center gap-2 px-3 h-9 cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 transition-colors ${
                   selected ? 'bg-zinc-800' : 'hover:bg-zinc-900'
                 }`}
                 onClick={() => handleSelect(instr.id)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelect(instr.id); } }}
+                role="option"
+                aria-selected={selected}
+                tabIndex={0}
               >
                 <span
-                  className={`material-symbols-outlined shrink-0 ${selected ? 'text-violet-400' : 'text-zinc-700'}`}
-                  style={{ fontSize: 14 }}
+                  className={`material-symbols-outlined text-sm shrink-0 ${selected ? 'text-violet-400' : 'text-zinc-700'}`}
                 >
                   {selected ? 'chevron_right' : 'radio_button_unchecked'}
                 </span>
@@ -101,28 +104,28 @@ export default function InstrumentPanel({ onClose }: Props) {
 
                 <span className="text-xs text-zinc-600 shrink-0 tabular-nums">
                   {instr.type === 'sample'
-                    ? <span className="text-xs text-zinc-600">smp</span>
+                    ? 'smp'
                     : <WaveformIcon type={instr.osc} size={16} className="text-zinc-600" />
                   }
                 </span>
 
                 <button
                   onClick={e => { e.stopPropagation(); handleDelete(instr.id); }}
-                  className="text-zinc-700 hover:text-red-400 transition-colors shrink-0 ml-1"
+                  className="text-zinc-700 hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 transition-colors shrink-0 ml-1"
                   title="Delete instrument"
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>close</span>
+                  <span className="material-symbols-outlined text-sm">close</span>
                 </button>
               </div>
 
               {deleteError === instr.id && (
                 <div className="flex items-center gap-1.5 px-3 pb-2 pt-0.5">
-                  <span className="material-symbols-outlined text-amber-500 shrink-0" style={{ fontSize: 12 }}>warning</span>
+                  <span className="material-symbols-outlined text-amber-500 text-xs shrink-0">warning</span>
                   <span className="text-xs text-amber-600 flex-1">
                     In use by {tracks.filter(t => t.instrumentId === instr.id).length} track(s)
                   </span>
-                  <button onClick={() => setDeleteError(null)} className="text-zinc-600 hover:text-zinc-400">
-                    <span className="material-symbols-outlined" style={{ fontSize: 12 }}>close</span>
+                  <button onClick={() => setDeleteError(null)} className="text-zinc-600 hover:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+                    <span className="material-symbols-outlined text-xs">close</span>
                   </button>
                 </div>
               )}
@@ -134,9 +137,9 @@ export default function InstrumentPanel({ onClose }: Props) {
         <div className="border-t border-zinc-800 mt-1">
           <button
             onClick={() => setPresetsOpen(v => !v)}
-            className="flex items-center gap-1.5 w-full px-3 h-8 text-xs text-zinc-500 hover:text-zinc-300 transition-colors select-none"
+            className="flex items-center gap-1.5 w-full px-3 h-8 text-xs text-zinc-500 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500 transition-colors select-none"
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>
+            <span className="material-symbols-outlined text-[13px]">
               {presetsOpen ? 'expand_less' : 'expand_more'}
             </span>
             Add from preset
@@ -147,7 +150,7 @@ export default function InstrumentPanel({ onClose }: Props) {
                 <button
                   key={preset.id}
                   onClick={() => handleAddPreset(preset)}
-                  className="text-xs px-2 py-1 rounded border border-zinc-700 text-zinc-400 hover:text-violet-400 hover:border-violet-600 transition-colors"
+                  className="text-xs px-2 py-1 rounded border border-zinc-700 text-zinc-400 hover:text-violet-400 hover:border-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 transition-colors"
                 >
                   {preset.name}
                 </button>

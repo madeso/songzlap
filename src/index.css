@@ -1,10 +1,6 @@
 body {
-  margin: 0;
   overflow: hidden;
-  background: #09090b;
-  font-family: 'Inter', system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  background: #09090b; /* zinc-950 */
 }
 
 #root {

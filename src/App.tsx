@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
-import './App.css'
 import { useAppDispatch, useAppSelector } from './store/index'
 import {
   setPlaying, loadSong,
