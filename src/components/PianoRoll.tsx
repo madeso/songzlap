@@ -764,7 +764,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
         </div>
 
         {/* Grid — scrolls in both directions */}
-        <div ref={gridScrollRef} className="flex-1 overflow-auto" onScroll={handleGridScroll}>
+        <div ref={gridScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden" onScroll={handleGridScroll}>
           <svg ref={svgRef} width={gridWidth} height={totalHeight} className="block select-none">
 
             {/* Row backgrounds */}
