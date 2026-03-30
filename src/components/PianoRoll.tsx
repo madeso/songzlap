@@ -500,6 +500,13 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
 
     const isOutOfRange = renderPitch < displayMin || renderPitch >= displayMax;
     const isSelected = selectedNoteIds.has(note.id) && !isChord;
+    const hasAutomation = !isChord && !!note.automation && (
+      (note.automation.pitchPoints?.length ?? 0) > 0 ||
+      (note.automation.volumePoints?.length ?? 0) > 0 ||
+      note.automation.pan !== undefined ||
+      note.automation.sampleOffset !== undefined ||
+      note.automation.startDelayBeats !== undefined
+    );
     let bodyColor: string;
     let handleColor: string;
     if (isChord) {
@@ -508,9 +515,15 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     } else if (isOutOfRange) {
       bodyColor = '#f97316';
       handleColor = '#fb923c';
+    } else if (isSelected && hasAutomation) {
+      bodyColor = '#86efac';  // bright green when selected + has automation
+      handleColor = '#bbf7d0';
     } else if (isSelected) {
       bodyColor = '#a78bfa';  // brighter violet when selected
       handleColor = '#c4b5fd';
+    } else if (hasAutomation) {
+      bodyColor = '#22c55e';  // green-500 for notes with automation
+      handleColor = '#4ade80';
     } else {
       bodyColor = '#8b5cf6';
       handleColor = '#a78bfa';
