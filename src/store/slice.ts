@@ -200,6 +200,33 @@ const songSlice = createSlice({
     regenerateChordTrack(state, action: PayloadAction<string>) {
       regenerateChordClips(state, action.payload);
     },
+    setNoteAutomation(state, action: PayloadAction<{
+      clipId: string;
+      noteId: string;
+      velocity?: number;
+      pan?: number | null;
+      startDelayBeats?: number | null;
+      sampleOffset?: number | null;
+    }>) {
+      const clip = state.clips[action.payload.clipId];
+      if (!clip) return;
+      const note = clip.notes.find(n => n.id === action.payload.noteId);
+      if (!note) return;
+      const { velocity, pan, startDelayBeats, sampleOffset } = action.payload;
+      if (velocity !== undefined) note.velocity = Math.max(0, Math.min(1, velocity));
+      if ('pan' in action.payload) {
+        if (pan == null) { if (note.automation) delete note.automation.pan; }
+        else { note.automation ??= {}; note.automation.pan = Math.max(-1, Math.min(1, pan)); }
+      }
+      if ('startDelayBeats' in action.payload) {
+        if (startDelayBeats == null) { if (note.automation) delete note.automation.startDelayBeats; }
+        else { note.automation ??= {}; note.automation.startDelayBeats = Math.max(0, startDelayBeats); }
+      }
+      if ('sampleOffset' in action.payload) {
+        if (sampleOffset == null) { if (note.automation) delete note.automation.sampleOffset; }
+        else { note.automation ??= {}; note.automation.sampleOffset = Math.max(0, Math.round(sampleOffset)); }
+      }
+    },
     setLoop(state, action: PayloadAction<{ enabled?: boolean; start?: number; end?: number }>) {
       if (action.payload.enabled !== undefined) state.loopEnabled = action.payload.enabled;
       if (action.payload.start !== undefined) state.loopStart = action.payload.start;
@@ -214,6 +241,7 @@ export const {
   addNote, removeNote, resizeNote, updateNotes, transposeClip,
   setBpm, setPlaying, updateInstrument, addInstrument, removeInstrument, openInstrument,
   loadSong, setPlaybackMode, selectTrack, setLoop, addChordTrack, setChordConfig, regenerateChordTrack,
+  setNoteAutomation,
 } = songSlice.actions;
 
 export default songSlice.reducer;

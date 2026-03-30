@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Note, ChordConfig } from '../types';
 import { useAppDispatch, useAppSelector } from '../store/index';
-import { addNote, removeNote, resizeNote, updateNotes, openClip, transposeClip, setChordConfig } from '../store/slice';
+import { addNote, removeNote, resizeNote, updateNotes, openClip, transposeClip, setChordConfig, setNoteAutomation } from '../store/slice';
 import {
   PR_NOTE_HEIGHT,
-  PR_KEY_WIDTH, PR_CELL_WIDTH, BEATS_PER_BAR, SUBDIV,
+  PR_KEY_WIDTH, PR_CELL_WIDTH, BEATS_PER_BAR, SUBDIV, VELOCITY_LANE_H,
 } from '../constants';
 import { midiToName, isBlackKey, computeDisplayRange } from '../utils';
 
@@ -45,6 +45,11 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const isChord = !!chordTrack;
   const chordCfg = chordTrack?.chordConfig;
 
+  const instruments = useAppSelector(s => s.song.instruments);
+  const trackForClip = tracks.find(t => t.placements.some(p => p.clipId === clipId));
+  const instrument = trackForClip ? instruments[trackForClip.instrumentId] : undefined;
+  const isSampleInstrument = instrument?.type === 'sample';
+
   const { displayMin, displayMax } = computeDisplayRange(clip?.notes ?? []);
   const noteCount = displayMax - displayMin;
   const totalCells = (clip?.lengthBeats ?? 0) * SUBDIV;
@@ -60,6 +65,10 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const [lastDur, setLastDur] = useState<number>(1);
   const [cursor, setCursor] = useState<string>('crosshair');
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+
+  const velSvgRef = useRef<SVGSVGElement>(null);
+  const velScrollRef = useRef<HTMLDivElement>(null);
+  const velDragRef = useRef<string | null>(null);
 
   // Refs so callbacks always see the latest display range without stale closures
   const displayMaxRef = useRef(displayMax);
@@ -84,10 +93,13 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     if (pianoRef.current) pianoRef.current.scrollTop = top;
   });
 
-  // Keep piano keys in sync with grid vertical scroll
+  // Keep piano keys in sync with grid vertical scroll; keep velocity lane in sync horizontally
   const handleGridScroll = () => {
     if (pianoRef.current && gridScrollRef.current) {
       pianoRef.current.scrollTop = gridScrollRef.current.scrollTop;
+    }
+    if (velScrollRef.current && gridScrollRef.current) {
+      velScrollRef.current.scrollLeft = gridScrollRef.current.scrollLeft;
     }
   };
 
@@ -233,6 +245,25 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     };
   }, [clipId, dispatch, totalCells]);
 
+  // Velocity lane drag — global handlers
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!velDragRef.current) return;
+      const rect = velSvgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const y = e.clientY - rect.top;
+      const velocity = Math.max(0.01, Math.min(1, 1 - y / VELOCITY_LANE_H));
+      dispatch(setNoteAutomation({ clipId, noteId: velDragRef.current, velocity }));
+    };
+    const onUp = () => { velDragRef.current = null; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [clipId, dispatch]);
+
   const handleOverlayMouseMove = useCallback((e: React.MouseEvent<SVGRectElement>) => {
     if (dragRef.current) return;
     const coords = getSvgCoords(e.clientX, e.clientY);
@@ -330,6 +361,25 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     }
   }, [getSvgCoords, findNoteAt, clipId, dispatch]);
 
+  const handleVelMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = velSvgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const svgX = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    // Find closest note by start beat
+    let closest: Note | null = null;
+    let closestDist = Infinity;
+    for (const n of clip.notes) {
+      const noteX = n.beat * SUBDIV * PR_CELL_WIDTH;
+      const dist = Math.abs(svgX - noteX);
+      if (dist < closestDist) { closestDist = dist; closest = n; }
+    }
+    if (!closest || closestDist > PR_CELL_WIDTH * 2) return;
+    velDragRef.current = closest.id;
+    const velocity = Math.max(0.01, Math.min(1, 1 - y / VELOCITY_LANE_H));
+    dispatch(setNoteAutomation({ clipId, noteId: closest.id, velocity }));
+  }, [clip.notes, clipId, dispatch]);
+
   const renderNote = (note: Note) => {
     let durCells = Math.max(1, Math.round(note.duration * SUBDIV));
     let noteX = note.beat * SUBDIV * PR_CELL_WIDTH;
@@ -399,6 +449,31 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
           fill={handleColor}
           rx={2}
         />
+        {/* Pan badge: blue (left) or orange (right) edge tint */}
+        {!isChord && note.automation?.pan && Math.abs(note.automation.pan) > 0.05 && (
+          <rect
+            x={noteX + 1} y={renderY + 2}
+            width={3} height={PR_NOTE_HEIGHT - 3}
+            fill={note.automation.pan > 0 ? '#f97316' : '#3b82f6'}
+            rx={1} opacity={0.85}
+          />
+        )}
+        {/* Pitch automation badge (~) */}
+        {!isChord && (note.automation?.pitchPoints?.length ?? 0) > 0 && totalW > 10 && (
+          <text
+            x={noteX + totalW - 2} y={renderY + PR_NOTE_HEIGHT - 3}
+            textAnchor="end" fill="rgba(255,255,255,0.75)"
+            fontSize={8} fontFamily="Inter, sans-serif"
+          >~p</text>
+        )}
+        {/* Delay badge: dashed left edge */}
+        {!isChord && (note.automation?.startDelayBeats ?? 0) > 0 && (
+          <line
+            x1={noteX + 2} y1={renderY + 2}
+            x2={noteX + 2} y2={renderY + PR_NOTE_HEIGHT - 2}
+            stroke="rgba(255,255,255,0.5)" strokeWidth={1.5} strokeDasharray="2,2"
+          />
+        )}
       </g>
     );
   };
@@ -421,6 +496,10 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
 
   if (!clip) return null;
 
+  const selectedNote = !isChord && selectedNoteIds.size === 1
+    ? clip.notes.find(n => n.id === [...selectedNoteIds][0])
+    : undefined;
+
   // Playhead within this clip
   const placement = tracks.flatMap(t => t.placements).find(p => p.clipId === clipId);
   const clipRelativeBeat = placement ? currentBeat - placement.startBeat : -1;
@@ -428,7 +507,7 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const playheadX = clipRelativeBeat * SUBDIV * PR_CELL_WIDTH;
 
   return (
-    <div className="border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0 h-[280px]">
+    <div className="border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0 h-[328px]">
       {/* Chord settings bar — shown above the header when a chord clip is open */}
       {isChord && chordCfg && (
         <div className="flex items-center px-3 gap-2 bg-zinc-900 border-b border-zinc-700 shrink-0 h-7">
@@ -475,10 +554,12 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
             <span className="text-xs text-zinc-500 tabular-nums" title="Current note length">
               <span className="text-zinc-600 mr-1">len</span>{fmtLen(lastDur)}
             </span>
-            {selectedNoteIds.size > 0 && (
+            {selectedNoteIds.size > 1 && (
               <span className="text-xs text-violet-400 tabular-nums">{selectedNoteIds.size} selected</span>
             )}
-            <span className="text-xs text-zinc-600">Draw · Drag to move · ⇥ edges to resize · Ctrl+click or Del to delete</span>
+            {!selectedNote && (
+              <span className="text-xs text-zinc-600">Draw · Drag to move · ⇥ edges to resize · Ctrl+click or Del to delete</span>
+            )}
             <div className="flex items-center gap-0.5 ml-2">
               <button
                 title="Transpose down one octave"
@@ -497,6 +578,72 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
           <span className="material-symbols-outlined text-base">close</span>
         </button>
       </div>
+
+      {/* Note inspector strip — shown when exactly 1 melody note is selected */}
+      {!isChord && selectedNote && (
+        <div className="flex items-center px-3 gap-2 bg-zinc-900 border-b border-zinc-700 shrink-0 h-7">
+          <span className="text-xs text-violet-400">♩</span>
+          <span className="text-xs text-zinc-600 tabular-nums">{midiToName(selectedNote.pitch)} {fmtLen(selectedNote.duration)}</span>
+
+          <label className="text-xs text-zinc-500 ml-1">Vel</label>
+          <input
+            type="number" min={1} max={100}
+            value={Math.round(selectedNote.velocity * 100)}
+            onChange={e => {
+              const v = Number(e.target.value);
+              if (!isNaN(v) && e.target.value !== '') dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, velocity: v / 100 }));
+            }}
+            className="w-10 text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 tabular-nums"
+          />
+
+          <label className="text-xs text-zinc-500">Pan</label>
+          <input
+            type="number" min={-100} max={100}
+            value={Math.round((selectedNote.automation?.pan ?? 0) * 100)}
+            onChange={e => {
+              const v = Number(e.target.value);
+              if (!isNaN(v) && e.target.value !== '') {
+                const panVal = v / 100;
+                dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, pan: panVal === 0 ? null : panVal }));
+              }
+            }}
+            className="w-12 text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 tabular-nums"
+          />
+
+          <label className="text-xs text-zinc-500">Delay</label>
+          <input
+            type="number" min={0} max={8} step={0.25}
+            value={selectedNote.automation?.startDelayBeats ?? 0}
+            onChange={e => {
+              const v = Number(e.target.value);
+              if (!isNaN(v) && e.target.value !== '') dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, startDelayBeats: v > 0 ? v : null }));
+            }}
+            className="w-12 text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 tabular-nums"
+          />
+
+          {isSampleInstrument && (
+            <>
+              <label className="text-xs text-zinc-500">Offset</label>
+              <input
+                type="number" min={0} step={1}
+                value={selectedNote.automation?.sampleOffset ?? 0}
+                onChange={e => {
+                  const v = Number(e.target.value);
+                  if (!isNaN(v) && e.target.value !== '') dispatch(setNoteAutomation({ clipId, noteId: selectedNote.id, sampleOffset: v > 0 ? v : null }));
+                }}
+                className="w-14 text-xs bg-zinc-800 text-zinc-300 rounded px-1 py-0 border border-zinc-700 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 tabular-nums"
+              />
+            </>
+          )}
+
+          {(selectedNote.automation?.pitchPoints?.length ?? 0) > 0 && (
+            <span className="text-xs text-violet-400 tabular-nums" title="Has pitch automation from MOD import">~pitch</span>
+          )}
+          {(selectedNote.automation?.volumePoints?.length ?? 0) > 0 && (
+            <span className="text-xs text-amber-400 tabular-nums" title="Has volume automation from MOD import">~vol</span>
+          )}
+        </div>
+      )}
 
       {/* Body: fixed piano keys + scrollable grid */}
       <div className="flex-1 flex overflow-hidden">
@@ -591,6 +738,61 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
         </div>
 
       </div>
+
+      {/* Velocity lane — below the note grid, scrolls horizontally in sync with grid */}
+      {!isChord && (
+        <div className="flex shrink-0 border-t border-zinc-800" style={{ height: VELOCITY_LANE_H }}>
+          {/* Label column — aligns with piano keys */}
+          <div className="shrink-0 flex items-center justify-center bg-zinc-900 border-r border-zinc-800" style={{ width: PR_KEY_WIDTH }}>
+            <span className="text-xs text-zinc-500">vel</span>
+          </div>
+          {/* Scrollable velocity bars — horizontal scroll synced with grid */}
+          <div
+            ref={velScrollRef}
+            className="flex-1 overflow-x-auto overflow-y-hidden"
+            onScroll={() => {
+              if (gridScrollRef.current && velScrollRef.current) {
+                gridScrollRef.current.scrollLeft = velScrollRef.current.scrollLeft;
+              }
+            }}
+          >
+            <svg
+              ref={velSvgRef}
+              width={gridWidth}
+              height={VELOCITY_LANE_H}
+              className="block select-none cursor-ns-resize"
+              onMouseDown={handleVelMouseDown}
+            >
+              <rect x={0} y={0} width={gridWidth} height={VELOCITY_LANE_H} fill="#0c0c10" />
+              {/* Grid lines matching the note grid */}
+              {Array.from({ length: totalCells + 1 }, (_, i) => {
+                const x = i * PR_CELL_WIDTH;
+                const isBeat = i % SUBDIV === 0;
+                const isBar = i % (SUBDIV * BEATS_PER_BAR) === 0;
+                return (
+                  <line key={i} x1={x} y1={0} x2={x} y2={VELOCITY_LANE_H}
+                    stroke={isBar ? '#3f3f46' : isBeat ? '#2a2a30' : '#1a1a20'} strokeWidth={1} />
+                );
+              })}
+              {/* Velocity bar per note */}
+              {clip.notes.map(n => {
+                const x = n.beat * SUBDIV * PR_CELL_WIDTH;
+                const barW = Math.max(3, Math.min(n.duration * SUBDIV * PR_CELL_WIDTH - 2, PR_CELL_WIDTH * 2));
+                const barH = Math.max(2, Math.round(n.velocity * (VELOCITY_LANE_H - 4)));
+                const isSel = selectedNoteIds.has(n.id);
+                return (
+                  <rect key={n.id}
+                    x={x + 1} y={VELOCITY_LANE_H - barH}
+                    width={barW} height={barH}
+                    fill={isSel ? '#a78bfa' : '#8b5cf6'}
+                    rx={1} opacity={isSel ? 1 : 0.7}
+                  />
+                );
+              })}
+            </svg>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
