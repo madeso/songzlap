@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Note, ChordConfig } from '../types';
 import { useAppDispatch, useAppSelector } from '../store/index';
-import { addNote, removeNote, resizeNote, updateNotes, openClip, transposeClip, setChordConfig, setNoteAutomation } from '../store/slice';
+import { addNote, removeNote, resizeNote, updateNotes, openClip, transposeClip, setChordConfig, setNoteAutomation, setNoteAutomationCurve } from '../store/slice';
 import {
   PR_NOTE_HEIGHT,
   PR_KEY_WIDTH, PR_CELL_WIDTH, BEATS_PER_BAR, SUBDIV, VELOCITY_LANE_H,
@@ -153,6 +153,12 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
   const [hoveredNoteId, setHoveredNoteId] = useState<string | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState<boolean>(true);
+  const [autoCurveKind, setAutoCurveKind] = useState<'pitch' | 'volume'>('pitch');
+
+  const autoCurveSvgRef = useRef<SVGSVGElement>(null);
+  const autoCurveScrollRef = useRef<HTMLDivElement>(null);
+  // null = not dragging; number = index of point being dragged
+  const autoCurveDragRef = useRef<{ index: number; kind: 'pitch' | 'volume'; noteId: string } | null>(null);
   const [panelHeight, setPanelHeight] = useState<number>(() =>
     Number(localStorage.getItem('tunes-piano-roll-h')) || 328);
   const [velLaneHeight, setVelLaneHeight] = useState<number>(() =>
@@ -198,6 +204,9 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
     }
     if (velScrollRef.current && gridScrollRef.current) {
       velScrollRef.current.scrollLeft = gridScrollRef.current.scrollLeft;
+    }
+    if (autoCurveScrollRef.current && gridScrollRef.current) {
+      autoCurveScrollRef.current.scrollLeft = gridScrollRef.current.scrollLeft;
     }
   };
 
@@ -361,6 +370,49 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
       window.removeEventListener('mouseup', onUp);
     };
   }, [clipId, dispatch, velLaneHeight]);
+
+  // Automation curve point drag — global handlers
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const ds = autoCurveDragRef.current;
+      if (!ds) return;
+      const rect = autoCurveSvgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const svgX = e.clientX - rect.left;
+      const svgY = e.clientY - rect.top;
+      const LANE_H = 80;
+      // Find the note to get its duration for x clamping
+      const note = clip?.notes.find(n => n.id === ds.noteId);
+      if (!note) return;
+      const noteStartX = note.beat * SUBDIV * PR_CELL_WIDTH;
+      const noteDurX = note.duration * SUBDIV * PR_CELL_WIDTH;
+      const beatOffset = Math.max(0, Math.min(note.duration, (svgX - noteStartX) / (SUBDIV * PR_CELL_WIDTH)));
+      let value: number;
+      if (ds.kind === 'pitch') {
+        value = Math.max(-8, Math.min(8, 8 - (svgY / LANE_H) * 16));
+        value = Math.round(value * 4) / 4; // snap to 0.25 semitones
+      } else {
+        value = Math.max(0, Math.min(1, 1 - svgY / LANE_H));
+        value = Math.round(value * 100) / 100;
+      }
+      const points = (ds.kind === 'pitch'
+        ? note.automation?.pitchPoints ?? []
+        : note.automation?.volumePoints ?? []) as [number, number][];
+      const newPoints: [number, number][] = points.map((p, i) =>
+        i === ds.index ? [beatOffset, value] : p
+      );
+      dispatch(setNoteAutomationCurve({ clipId, noteId: ds.noteId, kind: ds.kind, points: newPoints }));
+      // suppress unused lint warning
+      void noteDurX;
+    };
+    const onUp = () => { autoCurveDragRef.current = null; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [clip, clipId, dispatch]);
 
   const handleOverlayMouseMove = useCallback((e: React.MouseEvent<SVGRectElement>) => {
     if (dragRef.current) return;
@@ -953,6 +1005,178 @@ export default function PianoRoll({ currentBeat }: { currentBeat: number }) {
           </div>
         </div>
       )}
+
+      {/* Automation curve lane — shown for melody clips */}
+      {!isChord && (() => {
+        const LANE_H = 80;
+        const noteStartX = selectedNote ? selectedNote.beat * SUBDIV * PR_CELL_WIDTH : 0;
+        const noteDurPx = selectedNote ? selectedNote.duration * SUBDIV * PR_CELL_WIDTH : 0;
+        const points = selectedNote
+          ? (autoCurveKind === 'pitch'
+            ? selectedNote.automation?.pitchPoints ?? []
+            : selectedNote.automation?.volumePoints ?? [])
+          : [];
+
+        const toSvgY = (v: number) =>
+          autoCurveKind === 'pitch'
+            ? LANE_H / 2 - (v / 8) * (LANE_H / 2)  // 0 → center, +8 → top, -8 → bottom
+            : (1 - v) * LANE_H;                       // 1 → top, 0 → bottom
+
+        const refY = autoCurveKind === 'pitch' ? LANE_H / 2 : LANE_H * 0.5;
+        const refColor = autoCurveKind === 'pitch' ? '#ef444480' : '#eab30880';
+
+        return (
+          <div className="flex flex-col shrink-0 border-t border-zinc-700">
+            {/* Tab header */}
+            <div className="flex items-center shrink-0 bg-zinc-900 border-b border-zinc-800" style={{ height: 22 }}>
+              <div className="shrink-0 flex items-center justify-center border-r border-zinc-800" style={{ width: PR_KEY_WIDTH }}>
+                <span className="text-xs text-zinc-500" style={{ fontSize: 9 }}>auto</span>
+              </div>
+              {(['pitch', 'volume'] as const).map(k => (
+                <button
+                  key={k}
+                  onClick={() => setAutoCurveKind(k)}
+                  className={`text-xs px-2 h-full border-r border-zinc-800 transition-colors focus-visible:outline-none ${autoCurveKind === k ? 'text-violet-400 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  style={{ fontSize: 10 }}
+                >{k === 'pitch' ? 'Pitch' : 'Volume'}</button>
+              ))}
+              {selectedNote && points.length > 0 && (
+                <button
+                  onClick={() => dispatch(setNoteAutomationCurve({ clipId, noteId: selectedNote.id, kind: autoCurveKind, points: null }))}
+                  className="text-xs text-zinc-600 hover:text-red-400 px-2 transition-colors focus-visible:outline-none"
+                  style={{ fontSize: 10 }}
+                  title="Clear curve"
+                >clear</button>
+              )}
+            </div>
+            {/* Curve area */}
+            <div className="flex" style={{ height: LANE_H }}>
+              <div className="shrink-0 bg-zinc-900 border-r border-zinc-800 flex items-center justify-center" style={{ width: PR_KEY_WIDTH }}>
+                {selectedNote && (
+                  <span className="text-zinc-600" style={{ fontSize: 8 }}>
+                    {autoCurveKind === 'pitch' ? '±8st' : '0-1'}
+                  </span>
+                )}
+              </div>
+              <div
+                ref={autoCurveScrollRef}
+                className="flex-1 overflow-hidden"
+                onScroll={() => {
+                  if (gridScrollRef.current && autoCurveScrollRef.current)
+                    gridScrollRef.current.scrollLeft = autoCurveScrollRef.current.scrollLeft;
+                }}
+              >
+                <svg
+                  ref={autoCurveSvgRef}
+                  width={gridWidth}
+                  height={LANE_H}
+                  className="block select-none"
+                  style={{ cursor: selectedNote ? 'crosshair' : 'default', background: '#0a0a0f' }}
+                  onMouseDown={e => {
+                    if (!selectedNote) return;
+                    const rect = autoCurveSvgRef.current?.getBoundingClientRect();
+                    if (!rect) return;
+                    const svgX = e.clientX - rect.left;
+                    const svgY = e.clientY - rect.top;
+                    // Check if clicking near an existing point
+                    const beatOffset = (svgX - noteStartX) / (SUBDIV * PR_CELL_WIDTH);
+                    for (let i = 0; i < points.length; i++) {
+                      const px = noteStartX + points[i][0] * SUBDIV * PR_CELL_WIDTH;
+                      const py = toSvgY(points[i][1]);
+                      if (Math.abs(svgX - px) <= 6 && Math.abs(svgY - py) <= 6) {
+                        autoCurveDragRef.current = { index: i, kind: autoCurveKind, noteId: selectedNote.id };
+                        return;
+                      }
+                    }
+                    // Click on empty area: add point if within note bounds
+                    if (beatOffset >= 0 && beatOffset <= selectedNote.duration) {
+                      let newVal: number;
+                      if (autoCurveKind === 'pitch') {
+                        newVal = Math.round((8 - (svgY / LANE_H) * 16) * 4) / 4;
+                        newVal = Math.max(-8, Math.min(8, newVal));
+                      } else {
+                        newVal = Math.max(0, Math.min(1, Math.round((1 - svgY / LANE_H) * 100) / 100));
+                      }
+                      const newPoints: [number, number][] = [...points, [beatOffset, newVal]];
+                      dispatch(setNoteAutomationCurve({ clipId, noteId: selectedNote.id, kind: autoCurveKind, points: newPoints }));
+                    }
+                  }}
+                  onDoubleClick={e => {
+                    if (!selectedNote) return;
+                    const rect = autoCurveSvgRef.current?.getBoundingClientRect();
+                    if (!rect) return;
+                    const svgX = e.clientX - rect.left;
+                    const svgY = e.clientY - rect.top;
+                    for (let i = 0; i < points.length; i++) {
+                      const px = noteStartX + points[i][0] * SUBDIV * PR_CELL_WIDTH;
+                      const py = toSvgY(points[i][1]);
+                      if (Math.abs(svgX - px) <= 8 && Math.abs(svgY - py) <= 8) {
+                        const newPoints: [number, number][] = points.filter((_, idx) => idx !== i);
+                        dispatch(setNoteAutomationCurve({ clipId, noteId: selectedNote.id, kind: autoCurveKind, points: newPoints.length > 0 ? newPoints : null }));
+                        return;
+                      }
+                    }
+                  }}
+                  onContextMenu={e => { e.preventDefault(); }}
+                >
+                  {/* Grid lines */}
+                  {Array.from({ length: totalCells + 1 }, (_, i) => {
+                    const x = i * PR_CELL_WIDTH;
+                    const isBar = i % (SUBDIV * BEATS_PER_BAR) === 0;
+                    const isBeat = i % SUBDIV === 0;
+                    return <line key={i} x1={x} y1={0} x2={x} y2={LANE_H}
+                      stroke={isBar ? '#3f3f46' : isBeat ? '#27272a' : '#18181b'} strokeWidth={1} />;
+                  })}
+                  {/* Note span highlight */}
+                  {selectedNote && (
+                    <rect x={noteStartX} y={0} width={noteDurPx} height={LANE_H}
+                      fill="#ffffff08" />
+                  )}
+                  {/* Reference line */}
+                  <line x1={0} y1={refY} x2={gridWidth} y2={refY} stroke={refColor} strokeWidth={1} strokeDasharray="4,3" />
+                  {/* Curve polyline */}
+                  {selectedNote && points.length >= 2 && (
+                    <polyline
+                      points={points.map(([off, v]) =>
+                        `${(noteStartX + off * SUBDIV * PR_CELL_WIDTH).toFixed(1)},${toSvgY(v).toFixed(1)}`
+                      ).join(' ')}
+                      fill="none" stroke="#a78bfa" strokeWidth={1.5} opacity={0.8}
+                    />
+                  )}
+                  {/* Control points */}
+                  {selectedNote && points.map(([off, v], i) => {
+                    const px = noteStartX + off * SUBDIV * PR_CELL_WIDTH;
+                    const py = toSvgY(v);
+                    return (
+                      <g key={i}>
+                        <circle cx={px} cy={py} r={5} fill="transparent" className="cursor-grab" />
+                        <circle cx={px} cy={py} r={3.5} fill="#a78bfa" stroke="#c4b5fd" strokeWidth={1}
+                          style={{ cursor: 'grab' }} />
+                        <text x={px} y={py - 6} textAnchor="middle" fill="#71717a" fontSize={7} fontFamily="Inter, sans-serif">
+                          {autoCurveKind === 'pitch' ? (v >= 0 ? `+${v}` : String(v)) : v.toFixed(2)}
+                        </text>
+                      </g>
+                    );
+                  })}
+                  {/* Empty state hint */}
+                  {!selectedNote && (
+                    <text x={gridWidth / 2} y={LANE_H / 2} textAnchor="middle" dominantBaseline="middle"
+                      fill="#3f3f46" fontSize={10} fontFamily="Inter, sans-serif">
+                      Select a note to edit automation
+                    </text>
+                  )}
+                  {selectedNote && points.length === 0 && (
+                    <text x={noteStartX + noteDurPx / 2} y={LANE_H / 2} textAnchor="middle" dominantBaseline="middle"
+                      fill="#3f3f46" fontSize={10} fontFamily="Inter, sans-serif">
+                      Click to add points
+                    </text>
+                  )}
+                </svg>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

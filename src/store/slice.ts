@@ -227,6 +227,24 @@ const songSlice = createSlice({
         else { note.automation ??= {}; note.automation.sampleOffset = Math.max(0, Math.round(sampleOffset)); }
       }
     },
+    setNoteAutomationCurve(state, action: PayloadAction<{
+      clipId: string;
+      noteId: string;
+      kind: 'pitch' | 'volume';
+      points: [number, number][] | null;
+    }>) {
+      const clip = state.clips[action.payload.clipId];
+      if (!clip) return;
+      const note = clip.notes.find(n => n.id === action.payload.noteId);
+      if (!note) return;
+      const key = action.payload.kind === 'pitch' ? 'pitchPoints' : 'volumePoints';
+      if (action.payload.points === null) {
+        if (note.automation) delete note.automation[key];
+      } else {
+        note.automation ??= {};
+        note.automation[key] = [...action.payload.points].sort((a, b) => a[0] - b[0]);
+      }
+    },
     setLoop(state, action: PayloadAction<{ enabled?: boolean; start?: number; end?: number }>) {
       if (action.payload.enabled !== undefined) state.loopEnabled = action.payload.enabled;
       if (action.payload.start !== undefined) state.loopStart = action.payload.start;
@@ -241,7 +259,7 @@ export const {
   addNote, removeNote, resizeNote, updateNotes, transposeClip,
   setBpm, setPlaying, updateInstrument, addInstrument, removeInstrument, openInstrument,
   loadSong, setPlaybackMode, selectTrack, setLoop, addChordTrack, setChordConfig, regenerateChordTrack,
-  setNoteAutomation,
+  setNoteAutomation, setNoteAutomationCurve,
 } = songSlice.actions;
 
 export default songSlice.reducer;
