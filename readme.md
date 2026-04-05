@@ -1,5 +1,5 @@
-# Tunes
-Tunes is a simple digital audio workstation (DAW) for the web.
+# Songzlap
+Songzlap is a simple digital audio workstation (DAW) for the web.
 
 # Features
 * use the piano roll to create some samples. Select the instrument and lay out your tracks.
